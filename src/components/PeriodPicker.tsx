@@ -1,4 +1,5 @@
 import type { PeriodKey } from '../types';
+import { Button } from './ui/button';
 
 const periods: Array<{ key: PeriodKey; label: string }> = [
   { key: 'today', label: 'Сьогодні' },
@@ -12,14 +13,15 @@ export function PeriodPicker({ value, onChange }: { value: PeriodKey; onChange: 
   return (
     <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-xs)]">
       {periods.map((period) => (
-        <button
-          type="button"
+        <Button
+          variant="segment"
+          size="none"
           key={period.key}
           onClick={() => onChange(period.key)}
-          className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition ${value === period.key ? 'bg-[var(--text)] text-[var(--surface)] shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}
+          active={value === period.key}
         >
           {period.label}
-        </button>
+        </Button>
       ))}
     </div>
   );

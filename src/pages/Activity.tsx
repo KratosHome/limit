@@ -1,6 +1,8 @@
 import { ArrowDown, ArrowUp, CalendarDays, Search, SlidersHorizontal } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { AppIcon } from './AppIcon';
+import { AppIcon } from '../components/AppIcon';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { formatDuration } from '../lib/format';
 import type { AppUsage, DashboardData } from '../types';
 
@@ -46,9 +48,9 @@ export function Activity({ data, onSetLimit }: ActivityProps) {
     const active = sortKey === value;
     const Icon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
     return (
-      <button type="button" onClick={() => changeSort(value)} aria-label={`${String(children)}. ${active ? `Сортування ${sortDirection === 'asc' ? 'за зростанням' : 'за спаданням'}` : 'Сортувати'}`} className={`inline-flex items-center gap-1 uppercase tracking-[0.08em] ${active ? 'text-[var(--text)]' : ''}`}>
+      <Button variant="ghost" size="none" onClick={() => changeSort(value)} aria-label={`${String(children)}. ${active ? `Сортування ${sortDirection === 'asc' ? 'за зростанням' : 'за спаданням'}` : 'Сортувати'}`} className={`inline-flex items-center gap-1 rounded-none uppercase tracking-[0.08em] hover:bg-transparent ${active ? 'text-[var(--text)]' : ''}`}>
         {children}{active && <Icon size={11} />}
-      </button>
+      </Button>
     );
   }
 
@@ -65,7 +67,7 @@ export function Activity({ data, onSetLimit }: ActivityProps) {
       <div className="mb-4 grid grid-cols-[minmax(260px,1fr)_210px_auto] gap-3">
         <label className="input-shell flex items-center gap-2.5">
           <Search size={16} className="text-[var(--muted)]" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук застосунку…" className="w-full bg-transparent text-[12px] font-medium outline-none placeholder:text-[var(--muted)]" />
+          <Input variant="ghost" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук застосунку…" />
         </label>
         <label className="input-shell flex items-center gap-2">
           <SlidersHorizontal size={15} className="text-[var(--muted)]" />
@@ -109,14 +111,14 @@ export function Activity({ data, onSetLimit }: ActivityProps) {
                 <span role="cell" className="text-[12px] font-semibold tabular-nums text-[var(--muted-strong)]">{app.launches}</span>
                 <div role="cell" className="flex items-center justify-end">
                   {app.limitEnabled && app.limitMinutes && data.days.length === 1 ? (
-                    <button type="button" onClick={() => onSetLimit(app)} className="group w-[128px] text-left">
+                    <Button variant="ghost" size="none" onClick={() => onSetLimit(app)} className="group w-[128px] rounded-none text-left hover:bg-transparent">
                       <div className="flex items-center justify-between text-[9px] font-bold text-[var(--muted-strong)]"><span>{formatDuration(app.seconds)}</span><span>{formatDuration(limitSeconds)}</span></div>
                       <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]"><div className={`h-full rounded-full ${limitProgress >= 100 ? 'bg-rose-500' : limitProgress >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(2, limitProgress)}%` }} /></div>
-                    </button>
+                    </Button>
                   ) : app.limitEnabled && app.limitMinutes ? (
-                    <button type="button" onClick={() => onSetLimit(app)} className="rounded-lg bg-[var(--surface-muted)] px-2.5 py-1.5 text-[9px] font-bold text-[var(--muted-strong)]">{formatDuration(app.limitMinutes * 60)} / день</button>
+                    <Button variant="subtle" size="none" onClick={() => onSetLimit(app)}>{formatDuration(app.limitMinutes * 60)} / день</Button>
                   ) : (
-                    <button type="button" onClick={() => onSetLimit(app)} className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-[10px] font-bold text-[var(--muted-strong)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">+ Ліміт</button>
+                    <Button variant="secondary" size="none" onClick={() => onSetLimit(app)} className="rounded-lg px-2.5 py-1.5 text-[10px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">+ Ліміт</Button>
                   )}
                 </div>
               </div>

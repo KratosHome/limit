@@ -1,5 +1,6 @@
 import { BarChart3, Clock3, Gauge, Settings2 } from 'lucide-react';
 import type { ViewKey } from '../types';
+import { Button } from './ui/button';
 
 const navigation: Array<{ key: ViewKey; label: string; icon: typeof Gauge }> = [
   { key: 'overview', label: 'Огляд', icon: Gauge },
@@ -30,17 +31,16 @@ export function Sidebar({ view, onChange, trackingEnabled, currentApp }: Sidebar
 
       <nav className="space-y-1" aria-label="Основна навігація">
         {navigation.map(({ key, label, icon: Icon }) => (
-          <button
+          <Button
+            variant="nav"
+            size="none"
             key={key}
-            type="button"
             onClick={() => onChange(key)}
-            className={`nav-button flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-[13px] font-semibold transition ${
-              view === key ? 'bg-[var(--nav-active)] text-[var(--accent-strong)]' : 'text-[var(--muted-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--text)]'
-            }`}
+            active={view === key}
           >
             <Icon size={18} strokeWidth={view === key ? 2.3 : 1.9} />
             {label}
-          </button>
+          </Button>
         ))}
       </nav>
 

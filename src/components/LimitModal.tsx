@@ -1,6 +1,8 @@
 import { BellRing, Check, Clock3, Info, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from './AppIcon';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
 import { formatMinutes } from '../lib/format';
 import type { AppLimit, KnownApp, LimitInput } from '../types';
 
@@ -87,7 +89,7 @@ export function LimitModal({ apps, existing, initialAppId, onClose, onSave, onDe
       <form ref={dialogRef} onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="limit-modal-title" aria-busy={saving} className="modal-panel w-full max-w-[510px] overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_28px_80px_rgba(15,23,42,.22)]">
         <div className="flex items-start justify-between border-b border-[var(--border)] px-6 py-5">
           <div><div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]"><Clock3 size={13} /> Щоденна межа</div><h2 id="limit-modal-title" className="text-[18px] font-bold tracking-[-0.03em] text-[var(--text)]">{existing ? 'Редагувати ліміт' : 'Новий ліміт'}</h2></div>
-          <button type="button" onClick={onClose} className="icon-button" aria-label="Закрити"><X size={18} /></button>
+          <Button variant="icon" size="icon" onClick={onClose} aria-label="Закрити"><X size={18} /></Button>
         </div>
 
         <div className="space-y-5 px-6 py-5">
@@ -105,11 +107,11 @@ export function LimitModal({ apps, existing, initialAppId, onClose, onSave, onDe
           <div>
             <label htmlFor="limit-duration" className="field-label">Час на день</label>
             <div className="mt-2 grid grid-cols-4 gap-2">
-              {presets.map((preset) => <button key={preset} type="button" onClick={() => setMinutes(preset)} className={`rounded-xl border px-2 py-2.5 text-[11px] font-bold transition ${minutes === preset ? 'border-[var(--accent)] bg-[var(--nav-active)] text-[var(--accent-strong)]' : 'border-[var(--border)] text-[var(--muted-strong)] hover:border-[var(--border-strong)]'}`}>{formatMinutes(preset)}</button>)}
+              {presets.map((preset) => <Button key={preset} variant="secondary" size="none" onClick={() => setMinutes(preset)} className={`rounded-xl px-2 py-2.5 text-[11px] ${minutes === preset ? 'border-[var(--accent)] bg-[var(--nav-active)] text-[var(--accent-strong)]' : 'bg-transparent'}`}>{formatMinutes(preset)}</Button>)}
             </div>
             <div className="mt-3 flex items-center gap-3">
               <input id="limit-duration" aria-valuetext={formatMinutes(minutes)} type="range" min="5" max="480" step="5" value={Math.min(minutes, 480)} onChange={(event) => setMinutes(Number(event.target.value))} className="limit-range min-w-0 flex-1" />
-              <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"><input aria-label="Ліміт у хвилинах" type="number" min="1" max="1440" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} className="w-12 bg-transparent text-right text-[12px] font-bold text-[var(--text)] outline-none" /><span className="ml-1 text-[10px] font-semibold text-[var(--muted)]">хв</span></div>
+              <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2"><Input variant="number" aria-label="Ліміт у хвилинах" type="number" min="1" max="1440" value={minutes} onChange={(event) => setMinutes(Number(event.target.value))} /><span className="ml-1 text-[10px] font-semibold text-[var(--muted)]">хв</span></div>
             </div>
           </div>
 
@@ -130,8 +132,8 @@ export function LimitModal({ apps, existing, initialAppId, onClose, onSave, onDe
         </div>
 
         <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-muted)] px-6 py-4">
-          <div>{existing && <button type="button" onClick={remove} disabled={saving} className="inline-flex items-center gap-1.5 text-[10px] font-bold text-rose-500 hover:text-rose-600 disabled:opacity-50"><Trash2 size={14} /> Видалити</button>}</div>
-          <div className="flex gap-2"><button type="button" onClick={onClose} className="secondary-button">Скасувати</button><button type="submit" disabled={saving || !apps.length} className="primary-button disabled:cursor-not-allowed disabled:opacity-50">{saving ? 'Зберігаю…' : <><Check size={15} /> Зберегти</>}</button></div>
+          <div>{existing && <Button variant="link" size="none" onClick={remove} disabled={saving} className="text-rose-500 hover:text-rose-600"><Trash2 size={14} /> Видалити</Button>}</div>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Скасувати</Button><Button type="submit" disabled={saving || !apps.length}>{saving ? 'Зберігаю…' : <><Check size={15} /> Зберегти</>}</Button></div>
         </div>
       </form>
     </div>

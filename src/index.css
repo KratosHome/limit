@@ -65,16 +65,6 @@ select option { background: var(--surface); color: var(--text); }
 .page-subtitle { margin-top: 5px; font-size: 11px; line-height: 1.6; font-weight: 500; color: var(--muted); }
 .section-title { font-size: 13px; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; color: var(--text); }
 .section-subtitle { margin-top: 4px; font-size: 10px; font-weight: 500; color: var(--muted); }
-.text-button { font-size: 10px; font-weight: 700; color: var(--accent-strong); transition: opacity 150ms ease; }
-.text-button:hover { opacity: .72; }
-.primary-button { display: inline-flex; height: 38px; align-items: center; justify-content: center; gap: 7px; border-radius: 11px; border: 0; background: var(--accent); padding: 0 15px; color: white; font-size: 10px; font-weight: 700; box-shadow: 0 6px 16px color-mix(in srgb, var(--accent), transparent 78%); transition: transform 150ms ease, filter 150ms ease; }
-.primary-button:hover { filter: brightness(1.04); transform: translateY(-1px); }
-.secondary-button { display: inline-flex; height: 38px; align-items: center; justify-content: center; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); padding: 0 15px; color: var(--muted-strong); font-size: 10px; font-weight: 700; }
-.secondary-button:hover { border-color: var(--border-strong); color: var(--text); }
-.icon-button, .top-icon-button { display: inline-grid; place-items: center; border: 1px solid transparent; color: var(--muted-strong); transition: 150ms ease; }
-.icon-button { width: 32px; height: 32px; border-radius: 10px; }
-.top-icon-button { width: 36px; height: 36px; border-radius: 11px; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-xs); }
-.icon-button:hover, .top-icon-button:hover { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text); }
 .input-shell { min-height: 42px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 0 13px; color: var(--text); box-shadow: var(--shadow-xs); }
 .input-shell:focus-within { border-color: color-mix(in srgb, var(--accent), transparent 25%); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%); }
 .field-label { display: block; font-size: 10px; font-weight: 700; color: var(--muted-strong); }
@@ -83,7 +73,6 @@ select option { background: var(--surface); color: var(--text); }
 .select-compact { min-width: 90px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted); padding: 7px 10px; color: var(--text); font-size: 10px; font-weight: 700; outline: none; }
 .theme-choice { display: inline-flex; align-items: center; gap: 5px; border-radius: 8px; padding: 6px 9px; color: var(--muted); font-size: 9px; font-weight: 700; }
 .theme-choice-active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-xs); }
-.date-input { width: 103px; background: transparent; color: var(--muted-strong); font-size: 10px; font-weight: 700; outline: none; }
 .empty-mini { margin: 10px; border: 1px dashed var(--border-strong); border-radius: 13px; padding: 28px 18px; text-align: center; color: var(--muted); font-size: 10px; line-height: 1.6; }
 .limit-range { appearance: none; height: 5px; border-radius: 999px; background: var(--progress-track); }
 .limit-range::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border: 3px solid var(--surface); border-radius: 50%; background: var(--accent); box-shadow: 0 1px 5px rgba(15, 23, 42, .22); }

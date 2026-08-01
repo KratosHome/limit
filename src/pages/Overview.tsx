@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Clock3, Gauge, ShieldCheck, Sparkles } from 'lucide-react';
-import { ActivityChart } from './ActivityChart';
-import { AppIcon } from './AppIcon';
+import { ActivityChart } from '../components/ActivityChart';
+import { AppIcon } from '../components/AppIcon';
+import { Button } from '../components/ui/button';
 import { formatChange, formatDuration, formatFullDate, formatMinutes } from '../lib/format';
 import type { AppLimit, DashboardData } from '../types';
 
@@ -82,7 +83,7 @@ export function Overview({ data, onOpenActivity, onOpenLimits, onEditLimit }: Ov
               <h2 className="section-title">Топ застосунків</h2>
               <p className="section-subtitle">За обраний період</p>
             </div>
-            <button type="button" onClick={onOpenActivity} className="text-button">Усі</button>
+            <Button variant="link" size="none" onClick={onOpenActivity}>Усі</Button>
           </div>
           <div className="px-2 pb-2">
             {data.apps.slice(0, 5).map((app) => {
@@ -113,7 +114,7 @@ export function Overview({ data, onOpenActivity, onOpenLimits, onEditLimit }: Ov
             <h2 className="section-title">Ліміти сьогодні</h2>
             <p className="section-subtitle">Прогрес до ваших щоденних цілей</p>
           </div>
-          <button type="button" onClick={onOpenLimits} className="text-button">Керувати</button>
+          <Button variant="link" size="none" onClick={onOpenLimits}>Керувати</Button>
         </div>
         {enabledLimits.length ? (
           <div className="grid grid-cols-3 gap-3">
@@ -123,7 +124,7 @@ export function Overview({ data, onOpenActivity, onOpenLimits, onEditLimit }: Ov
               const exceeded = percentage >= 100;
               const close = percentage >= 80 && !exceeded;
               return (
-                <button type="button" key={limit.appId} onClick={() => onEditLimit(limit)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--border-strong)]">
+                <Button variant="card" size="none" key={limit.appId} onClick={() => onEditLimit(limit)} className="p-4">
                   <div className="flex items-center gap-3">
                     <AppIcon id={limit.appId} name={limit.appName} size="sm" />
                     <div className="min-w-0 flex-1">
@@ -139,14 +140,14 @@ export function Overview({ data, onOpenActivity, onOpenLimits, onEditLimit }: Ov
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]">
                     <div className={`h-full rounded-full ${exceeded ? 'bg-rose-500' : close ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(2, percentage)}%` }} />
                   </div>
-                </button>
+                </Button>
               );
             })}
           </div>
         ) : (
-          <button type="button" onClick={() => onEditLimit()} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] py-6 text-[12px] font-semibold text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">
+          <Button variant="secondary" size="none" onClick={() => onEditLimit()} className="flex w-full items-center justify-center gap-2 rounded-2xl border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] py-6 text-[12px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">
             <Clock3 size={16} /> Додати перший щоденний ліміт
-          </button>
+          </Button>
         )}
       </section>
     </div>

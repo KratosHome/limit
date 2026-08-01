@@ -1,5 +1,6 @@
 import { Bell, CircleHelp, ExternalLink, HardDrive, Laptop, Moon, Power, ShieldCheck, Sun } from 'lucide-react';
 import type { DashboardData, Settings as SettingsType } from '../types';
+import { Button } from '../components/ui/button';
 
 interface SettingsProps {
   data: DashboardData;
@@ -11,9 +12,9 @@ interface SettingsProps {
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} className={`relative h-6 w-11 rounded-full transition ${checked ? 'bg-[var(--accent)]' : 'bg-[var(--toggle-off)]'}`}>
+    <Button variant="ghost" size="none" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} className={`relative h-6 w-11 rounded-full p-0 transition hover:bg-[var(--toggle-off)] ${checked ? 'bg-[var(--accent)] hover:bg-[var(--accent)]' : 'bg-[var(--toggle-off)]'}`}>
       <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${checked ? 'left-6' : 'left-1'}`} />
-    </button>
+    </Button>
   );
 }
 
@@ -53,8 +54,8 @@ export function Settings({ data, theme, onThemeChange, onSettingsChange, onOpenP
             <div className="border-b border-[var(--border)] px-5 py-4"><h2 className="section-title">Вигляд</h2><p className="section-subtitle">Оформлення інтерфейсу</p></div>
             <Row icon={theme === 'dark' ? Moon : Sun} title="Тема" description="Застосовується лише до інтерфейсу Limit.">
               <div className="flex rounded-xl bg-[var(--surface-muted)] p-1">
-                <button type="button" onClick={() => onThemeChange('light')} className={`theme-choice ${theme === 'light' ? 'theme-choice-active' : ''}`}><Sun size={13} /> Світла</button>
-                <button type="button" onClick={() => onThemeChange('dark')} className={`theme-choice ${theme === 'dark' ? 'theme-choice-active' : ''}`}><Moon size={13} /> Темна</button>
+                <Button variant="ghost" size="none" onClick={() => onThemeChange('light')} className={`theme-choice ${theme === 'light' ? 'theme-choice-active' : ''}`}><Sun size={13} /> Світла</Button>
+                <Button variant="ghost" size="none" onClick={() => onThemeChange('dark')} className={`theme-choice ${theme === 'dark' ? 'theme-choice-active' : ''}`}><Moon size={13} /> Темна</Button>
               </div>
             </Row>
           </section>
@@ -72,7 +73,7 @@ export function Settings({ data, theme, onThemeChange, onSettingsChange, onOpenP
             <section className="card border-amber-200 bg-amber-50/70 p-5 dark:border-amber-500/20 dark:bg-amber-500/5">
               <div className="mb-3 flex items-center gap-2 text-[12px] font-bold text-amber-700 dark:text-amber-300"><CircleHelp size={17} /> Потрібен доступ</div>
               <p className="text-[10px] leading-5 text-amber-800/70 dark:text-amber-200/60">macOS обмежила визначення активного застосунку. Перевірте дозволи Limit у системних налаштуваннях.</p>
-              <button type="button" onClick={onOpenPermissions} className="mt-4 inline-flex items-center gap-1.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">Відкрити налаштування <ExternalLink size={12} /></button>
+              <Button variant="link" size="none" onClick={onOpenPermissions} className="mt-4 text-amber-700 dark:text-amber-300">Відкрити налаштування <ExternalLink size={12} /></Button>
             </section>
           )}
 
