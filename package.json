@@ -1,0 +1,72 @@
+{
+  "name": "limit-app",
+  "productName": "Limit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Приватний desktop-трекер часу та лімітів для застосунків",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "start": "electron .",
+    "test": "node --test electron/*.test.cjs",
+    "package": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "ua.limit.desktop",
+    "productName": "Limit",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!node_modules/@mapbox/**/*",
+      "!node_modules/node-gyp/**/*",
+      "!node_modules/node-addon-api/**/*",
+      "!node_modules/tar/**/*",
+      "!node_modules/cacache/**/*",
+      "!node_modules/make-fetch-happen/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/get-windows/main",
+      "node_modules/get-windows/lib/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
+  },
+  "dependencies": {
+    "get-windows": "^9.3.0",
+    "lucide-react": "^1.28.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "concurrently": "^10.0.4",
+    "cross-env": "^10.1.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0",
+    "wait-on": "^9.1.0"
+  }
+}
