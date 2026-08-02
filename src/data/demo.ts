@@ -1,13 +1,8 @@
-import type {
-  AppLimit,
-  AppUsage,
-  DashboardData,
-  DateRange,
-  KnownApp,
-  LimitApi,
-  LimitInput,
-  Settings,
-} from '../types';
+import type { AppLimit, LimitInput } from '../types/limits';
+import type { DateRange } from '../types/navigation';
+import type { Settings } from '../types/settings';
+import type { AppUsage, DashboardData, KnownApp } from '../types/usage';
+import type { LimitApi } from '../types/api';
 import { toDayKey } from '../lib/format';
 
 const baseApps: AppUsage[] = [
@@ -126,13 +121,33 @@ let mockSettings: Settings = {
 
 function makeTimeline(range: DateRange) {
   if (range.from === range.to) {
-    return Array.from({ length: 24 }, (_, hour) => ({
-      key: String(hour),
-      seconds:
+    return Array.from({ length: 24 }, (_, hour) => {
+      const seconds =
         hour < 8 || hour > 21
           ? 0
-          : Math.max(0, 500 + Math.sin(hour * 1.7) * 420 + (hour % 3) * 230),
-    }));
+          : Math.round(
+              Math.max(0, 500 + Math.sin(hour * 1.7) * 420 + (hour % 3) * 230),
+            );
+      const weights = baseApps.map(
+        (app, index) => app.seconds * (0.7 + ((hour + index * 2) % 5) * 0.12),
+      );
+      const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+      let allocated = 0;
+      const apps = seconds
+        ? baseApps
+            .map((app, index) => {
+              const appSeconds =
+                index === baseApps.length - 1
+                  ? seconds - allocated
+                  : Math.round((seconds * weights[index]) / weightTotal);
+              allocated += appSeconds;
+              return { id: app.id, name: app.name, seconds: appSeconds };
+            })
+            .filter((app) => app.seconds > 0)
+            .sort((a, b) => b.seconds - a.seconds)
+        : [];
+      return { key: String(hour), seconds, apps };
+    });
   }
   const points = [];
   const cursor = new Date(`${range.from}T12:00:00`);

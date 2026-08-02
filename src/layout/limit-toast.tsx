@@ -1,6 +1,6 @@
 import { Bell } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import type { LimitNotification } from '../types';
+import type { LimitNotification } from '../types/limits';
 
 interface LimitToastProps {
   toast: LimitNotification;

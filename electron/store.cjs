@@ -188,17 +188,19 @@ class UsageStore {
   }
 
   updateSettings(patch) {
+    const input =
+      patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
     const allowed = {};
-    if (typeof patch.trackingEnabled === 'boolean')
-      allowed.trackingEnabled = patch.trackingEnabled;
-    if (typeof patch.websiteTrackingEnabled === 'boolean')
-      allowed.websiteTrackingEnabled = patch.websiteTrackingEnabled;
-    if (typeof patch.launchAtLogin === 'boolean')
-      allowed.launchAtLogin = patch.launchAtLogin;
-    if (Number.isFinite(patch.idleThresholdSeconds)) {
+    if (typeof input.trackingEnabled === 'boolean')
+      allowed.trackingEnabled = input.trackingEnabled;
+    if (typeof input.websiteTrackingEnabled === 'boolean')
+      allowed.websiteTrackingEnabled = input.websiteTrackingEnabled;
+    if (typeof input.launchAtLogin === 'boolean')
+      allowed.launchAtLogin = input.launchAtLogin;
+    if (Number.isFinite(input.idleThresholdSeconds)) {
       allowed.idleThresholdSeconds = Math.min(
         3600,
-        Math.max(15, Math.round(patch.idleThresholdSeconds)),
+        Math.max(15, Math.round(input.idleThresholdSeconds)),
       );
     }
     this.data.settings = { ...this.data.settings, ...allowed };
@@ -427,6 +429,7 @@ class UsageStore {
       key: String(hour),
       seconds: 0,
     }));
+    const hourlyApps = Array.from({ length: 24 }, () => new Map());
     const daily = [];
 
     for (const dayKey of days) {
@@ -481,8 +484,19 @@ class UsageStore {
         appMap.set(entry.id, aggregate);
         daySeconds += entry.seconds || 0;
         for (const [hour, seconds] of Object.entries(entry.hourly || {})) {
-          if (hourly[Number(hour)])
-            hourly[Number(hour)].seconds += seconds || 0;
+          const hourIndex = Number(hour);
+          const safeSeconds = Number.isFinite(seconds)
+            ? Math.max(0, seconds)
+            : 0;
+          if (!hourly[hourIndex] || safeSeconds <= 0) continue;
+          hourly[hourIndex].seconds += safeSeconds;
+          const appUsage = hourlyApps[hourIndex].get(entry.id) || {
+            id: entry.id,
+            name: entry.name,
+            seconds: 0,
+          };
+          appUsage.seconds += safeSeconds;
+          hourlyApps[hourIndex].set(entry.id, appUsage);
         }
       }
       daily.push({ key: dayKey, seconds: daySeconds });
@@ -507,7 +521,13 @@ class UsageStore {
       .sort((a, b) => b.seconds - a.seconds);
 
     const totalSeconds = apps.reduce((sum, app) => sum + app.seconds, 0);
-    const timeline = days.length <= 1 ? hourly : daily;
+    const hourlyTimeline = hourly.map((point, hour) => ({
+      ...point,
+      apps: [...hourlyApps[hour].values()].sort(
+        (a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, 'uk'),
+      ),
+    }));
+    const timeline = days.length <= 1 ? hourlyTimeline : daily;
     return { apps, totalSeconds, timeline, days };
   }
 

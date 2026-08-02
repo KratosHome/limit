@@ -4,7 +4,8 @@ import { AppIcon } from './app-icon';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { formatMinutes } from '../lib/format';
-import type { AppLimit, KnownApp, LimitInput } from '../types';
+import type { AppLimit, LimitInput } from '../types/limits';
+import type { KnownApp } from '../types/usage';
 
 interface LimitModalProps {
   apps: KnownApp[];

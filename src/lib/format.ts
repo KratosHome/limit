@@ -1,4 +1,4 @@
-import type { DateRange, PeriodKey } from '../types';
+import type { DateRange, PeriodKey } from '../types/navigation';
 
 export function toDayKey(date: Date): string {
   const year = date.getFullYear();

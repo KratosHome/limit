@@ -1,5 +1,5 @@
 import { BarChart3, Clock3, Gauge, Settings2 } from 'lucide-react';
-import type { ViewKey } from '../types';
+import type { ViewKey } from '../types/navigation';
 import { Button } from './ui/button';
 
 const navigation: Array<{ key: ViewKey; label: string; icon: typeof Gauge }> = [

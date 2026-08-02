@@ -4,8 +4,8 @@ import { AppShell } from '../layout/app-shell';
 import { DashboardContent } from '../layout/dashboard-content';
 import { AppHeader } from '../layout/app-header';
 import { AppRouter } from '../routes/app-router';
+import { useLimitApp } from '../hooks/use-limit-app';
 import { AppOverlays } from './app-overlays';
-import { useLimitApp } from './useLimitApp';
 
 export function LimitApp() {
   const app = useLimitApp();

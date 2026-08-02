@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limitApi } from '../api';
 import { offsetDay, rangeForPeriod, toDayKey } from '../lib/format';
-import type {
-  AppLimit,
-  AppUsage,
-  DashboardData,
-  DateRange,
-  LimitInput,
-  LimitNotification,
-  PeriodKey,
-  Settings as SettingsType,
-  ViewKey,
-} from '../types';
+import type { AppLimit, LimitInput, LimitNotification } from '../types/limits';
+import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
+import type { Settings as SettingsType } from '../types/settings';
+import type { AppUsage, DashboardData } from '../types/usage';
 
 export interface ModalState {
   existing?: AppLimit | null;

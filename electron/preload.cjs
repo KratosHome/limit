@@ -12,11 +12,13 @@ contextBridge.exposeInMainWorld('limitApi', {
   openPermissions: (kind) => ipcRenderer.invoke('permissions:open', kind),
   getAppIcon: (appId) => ipcRenderer.invoke('app:icon', appId),
   onDataUpdated: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('data:updated', listener);
     return () => ipcRenderer.removeListener('data:updated', listener);
   },
   onLimitNotification: (callback) => {
+    if (typeof callback !== 'function') return () => undefined;
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('limits:notification', listener);
     return () => ipcRenderer.removeListener('limits:notification', listener);

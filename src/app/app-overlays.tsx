@@ -1,7 +1,8 @@
 import { LimitModal } from '../components/limit-modal';
 import { LimitToast } from '../layout/limit-toast';
-import type { DashboardData, LimitInput, LimitNotification } from '../types';
-import type { ModalState } from './useLimitApp';
+import type { LimitInput, LimitNotification } from '../types/limits';
+import type { DashboardData } from '../types/usage';
+import type { ModalState } from '../hooks/use-limit-app';
 
 interface AppOverlaysProps {
   data: DashboardData | null;

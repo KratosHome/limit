@@ -84,3 +84,41 @@ test('getKnownApps exposes only renderer-safe application metadata', () => {
     },
   ]);
 });
+
+test('aggregate exposes per-app usage for every hourly timeline point', () => {
+  const store = createStore();
+  store.data.usageByDay = {
+    '2026-08-02': {
+      'com.example.Editor': {
+        id: 'com.example.Editor',
+        name: 'Editor',
+        seconds: 900,
+        launches: 1,
+        hourly: { 10: 300, 11: 600 },
+      },
+      'com.example.Chat': {
+        id: 'com.example.Chat',
+        name: 'Chat',
+        seconds: 180,
+        launches: 1,
+        hourly: { 10: 180 },
+      },
+    },
+  };
+
+  const { timeline } = store.aggregate('2026-08-02', '2026-08-02');
+
+  assert.deepEqual(timeline[10], {
+    key: '10',
+    seconds: 480,
+    apps: [
+      { id: 'com.example.Editor', name: 'Editor', seconds: 300 },
+      { id: 'com.example.Chat', name: 'Chat', seconds: 180 },
+    ],
+  });
+  assert.deepEqual(timeline[11], {
+    key: '11',
+    seconds: 600,
+    apps: [{ id: 'com.example.Editor', name: 'Editor', seconds: 600 }],
+  });
+});

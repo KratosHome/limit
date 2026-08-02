@@ -1,4 +1,4 @@
-import type { PeriodKey } from '../types';
+import type { PeriodKey } from '../types/navigation';
 import { Button } from './ui/button';
 
 const periods: Array<{ key: PeriodKey; label: string }> = [

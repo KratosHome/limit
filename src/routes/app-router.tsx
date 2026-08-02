@@ -2,14 +2,13 @@ import { Activity } from '../pages/activity';
 import { Limits } from '../pages/limits';
 import { Overview } from '../pages/overview';
 import { Settings } from '../pages/settings';
+import type { AppLimit } from '../types/limits';
+import type { ViewKey } from '../types/navigation';
 import type {
-  AppLimit,
-  AppUsage,
-  DashboardData,
   PermissionKind,
   Settings as SettingsType,
-  ViewKey,
-} from '../types';
+} from '../types/settings';
+import type { AppUsage, DashboardData } from '../types/usage';
 
 interface AppRouterProps {
   data: DashboardData;

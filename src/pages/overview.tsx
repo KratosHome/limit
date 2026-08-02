@@ -18,7 +18,8 @@ import {
   formatFullDate,
   formatMinutes,
 } from '../lib/format';
-import type { AppLimit, AppUsage, DashboardData } from '../types';
+import type { AppLimit } from '../types/limits';
+import type { AppUsage, DashboardData } from '../types/usage';
 
 interface OverviewProps {
   data: DashboardData;

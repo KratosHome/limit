@@ -1,6 +1,6 @@
 import { Globe2 } from 'lucide-react';
 import { formatDuration } from '../lib/format';
-import type { AppUsage } from '../types';
+import type { AppUsage } from '../types/usage';
 import { Button } from './ui/button';
 
 interface SiteUsagePanelProps {

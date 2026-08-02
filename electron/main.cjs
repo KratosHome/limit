@@ -8,6 +8,7 @@ const {
   nativeImage,
   Notification,
   powerMonitor,
+  session,
   shell,
   systemPreferences,
   Tray,
@@ -71,6 +72,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: false,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      devTools: !app.isPackaged,
     },
   });
 
@@ -86,10 +91,6 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (url !== mainWindow?.webContents.getURL()) event.preventDefault();
-  });
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -97,6 +98,52 @@ function createWindow() {
     }
   });
 }
+
+function configureSessionSecurity() {
+  const connectSources = app.isPackaged
+    ? "connect-src 'self'"
+    : "connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*";
+  const contentSecurityPolicy = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    connectSources,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-src 'none'",
+  ].join('; ');
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [contentSecurityPolicy],
+      },
+    });
+  });
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, _permission, callback) => callback(false),
+  );
+  session.defaultSession.setPermissionCheckHandler(() => false);
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-navigate', (event, url) => {
+    if (url !== contents.getURL()) event.preventDefault();
+  });
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  if (app.isPackaged) {
+    contents.on('before-input-event', (event, input) => {
+      const opensDevTools =
+        input.key === 'F12' ||
+        ((input.control || input.meta) && input.shift && input.key === 'I') ||
+        (input.meta && input.alt && input.key === 'I');
+      if (opensDevTools) event.preventDefault();
+    });
+  }
+});
 
 function createTray() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="5" fill="#111827"/><path d="M9 4.2v5.2l3.2 1.8" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="9" r="5.1" fill="none" stroke="white" stroke-width="1.2"/></svg>`;
@@ -230,6 +277,7 @@ function checkLimit(sample) {
 }
 
 function validateRange(range = {}) {
+  const input = range && typeof range === 'object' ? range : {};
   const today = localDay();
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   const isValidDay = (value) => {
@@ -237,8 +285,8 @@ function validateRange(range = {}) {
     const parsed = new Date(`${value}T12:00:00`);
     return Number.isFinite(parsed.getTime()) && localDay(parsed) === value;
   };
-  let from = isValidDay(range.from) ? range.from : today;
-  let to = isValidDay(range.to) ? range.to : today;
+  let from = isValidDay(input.from) ? input.from : today;
+  let to = isValidDay(input.to) ? input.to : today;
   if (to > today) to = today;
   if (from > today) from = today;
   if (from > to) [from, to] = [to, from];
@@ -363,25 +411,29 @@ function registerIpc() {
     return promise;
   });
   handleIpc('tracker:set-enabled', (enabled) => {
+    if (typeof enabled !== 'boolean')
+      throw new Error('Некоректне значення трекінгу');
     const settings = store.updateSettings({
-      trackingEnabled: Boolean(enabled),
+      trackingEnabled: enabled,
     });
     refreshTrayMenu();
     broadcastUpdate({ reason: 'settings' });
     return settings;
   });
   handleIpc('settings:update', (patch) => {
+    const safePatch =
+      patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
     const previousSettings = store.getSettings();
-    const settings = store.updateSettings(patch || {});
+    const settings = store.updateSettings(safePatch);
     if (
       process.platform === 'darwin' &&
-      patch?.websiteTrackingEnabled === true &&
+      safePatch.websiteTrackingEnabled === true &&
       !previousSettings.websiteTrackingEnabled
     ) {
       accessibilityPermission?.requestOnce();
     }
-    if (typeof patch?.launchAtLogin === 'boolean' && app.isPackaged) {
-      app.setLoginItemSettings({ openAtLogin: patch.launchAtLogin });
+    if (typeof safePatch.launchAtLogin === 'boolean' && app.isPackaged) {
+      app.setLoginItemSettings({ openAtLogin: safePatch.launchAtLogin });
     }
     refreshTrayMenu();
     broadcastUpdate({ reason: 'settings' });
@@ -393,16 +445,22 @@ function registerIpc() {
     return saved;
   });
   handleIpc('limits:delete', (appId) => {
-    store.deleteLimit(String(appId || ''));
+    if (typeof appId !== 'string' || !appId || appId.length > 512)
+      throw new Error('Некоректний ідентифікатор застосунку');
+    store.deleteLimit(appId);
     broadcastUpdate({ reason: 'limit' });
     return true;
   });
   handleIpc('limits:pause-today', (appId) => {
-    const limit = store.pauseLimitToday(String(appId || ''));
+    if (typeof appId !== 'string' || !appId || appId.length > 512)
+      throw new Error('Некоректний ідентифікатор застосунку');
+    const limit = store.pauseLimitToday(appId);
     broadcastUpdate({ reason: 'limit' });
     return limit;
   });
   handleIpc('permissions:open', async (kind) => {
+    if (kind !== undefined && kind !== 'accessibility' && kind !== 'automation')
+      throw new Error('Некоректний тип дозволу');
     if (process.platform === 'darwin') {
       if (kind === 'accessibility') accessibilityPermission?.requestOnce();
       const section =
@@ -418,6 +476,7 @@ function registerIpc() {
 
 if (hasSingleInstanceLock)
   app.whenReady().then(() => {
+    configureSessionSecurity();
     store = new UsageStore(
       path.join(app.getPath('userData'), 'usage-data.json'),
     );

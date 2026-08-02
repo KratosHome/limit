@@ -10,7 +10,8 @@ import {
 import { AppIcon } from '../components/app-icon';
 import { Button } from '../components/ui/button';
 import { formatDuration, formatMinutes } from '../lib/format';
-import type { AppLimit, DashboardData } from '../types';
+import type { AppLimit } from '../types/limits';
+import type { DashboardData } from '../types/usage';
 
 interface LimitsProps {
   data: DashboardData;

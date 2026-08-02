@@ -11,11 +11,11 @@ import {
   Sun,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import type { DashboardData } from '../types/usage';
 import type {
-  DashboardData,
   PermissionKind,
   Settings as SettingsType,
-} from '../types';
+} from '../types/settings';
 import { Button } from '../components/ui/button';
 
 interface SettingsProps {

@@ -4,7 +4,7 @@ import { PeriodPicker } from '../components/period-picker';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { offsetDay, toDayKey } from '../lib/format';
-import type { DateRange, PeriodKey, ViewKey } from '../types';
+import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
 
 interface AppHeaderProps {
   customRange: DateRange;
