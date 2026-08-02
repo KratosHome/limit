@@ -25,6 +25,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!electron/*.test.cjs",
       "package.json",
       "!node_modules/@mapbox/**/*",
       "!node_modules/node-gyp/**/*",

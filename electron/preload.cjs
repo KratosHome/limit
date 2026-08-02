@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('limitApi', {
   deleteLimit: (appId) => ipcRenderer.invoke('limits:delete', appId),
   pauseLimitToday: (appId) => ipcRenderer.invoke('limits:pause-today', appId),
   openPermissions: (kind) => ipcRenderer.invoke('permissions:open', kind),
+  getAppIcon: (appId) => ipcRenderer.invoke('app:icon', appId),
   onDataUpdated: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('data:updated', listener);

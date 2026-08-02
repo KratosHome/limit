@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const path = require('node:path');
 const {
   app,
@@ -12,6 +13,7 @@ const {
   Tray,
 } = require('electron');
 const { createAccessibilityPermissionController } = require('./accessibility-permission.cjs');
+const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const { UsageStore, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 
@@ -26,6 +28,11 @@ let screenLocked = false;
 let suspended = false;
 const pendingAlerts = new Set();
 const notificationRetryAt = new Map();
+const appIconCache = new Map();
+const appIconMissCache = new Map();
+const appIconPending = new Map();
+const MAX_APP_ICON_CACHE_ENTRIES = 256;
+const MAX_PENDING_APP_ICONS = 128;
 
 app.setPath('userData', path.join(app.getPath('appData'), app.isPackaged ? 'Limit' : 'Limit Development'));
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -218,12 +225,84 @@ function handleIpc(channel, handler) {
   });
 }
 
+function setBoundedCache(cache, key, value) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > MAX_APP_ICON_CACHE_ENTRIES) {
+    cache.delete(cache.keys().next().value);
+  }
+}
+
+async function loadAppIcon(normalizedId, source, fingerprint) {
+  try {
+    const iconPath = await resolveApplicationIconPath({
+      appId: normalizedId,
+      appName: source.appName,
+      allowAppIdPath: source.tracked,
+      executablePath: source.executablePath,
+      platform: process.platform,
+      userHome: app.getPath('home'),
+    });
+    if (!iconPath) {
+      setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+      return null;
+    }
+    let icon;
+    if (process.platform === 'darwin') {
+      let thumbnailPath = iconPath;
+      try {
+        thumbnailPath = await fs.promises.realpath(iconPath);
+      } catch {
+        // The resolved bundle path is still a valid fallback if realpath fails.
+      }
+      icon = await nativeImage.createThumbnailFromPath(thumbnailPath, { width: 128, height: 128 });
+    } else {
+      icon = await app.getFileIcon(iconPath, {
+        size: fileIconSize(process.platform),
+      });
+    }
+    if (icon.isEmpty()) {
+      setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+      return null;
+    }
+    const dataUrl = icon.toDataURL();
+    setBoundedCache(appIconCache, normalizedId, { fingerprint, dataUrl });
+    appIconMissCache.delete(normalizedId);
+    return dataUrl;
+  } catch {
+    setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+    return null;
+  }
+}
+
 function registerIpc() {
   handleIpc('dashboard:get', (range) => {
     const { from, to } = validateRange(range);
     return { ...store.getDashboard(from, to), tracker: tracker.getStatus(), platform: process.platform, isPackaged: app.isPackaged };
   });
   handleIpc('tracker:status', () => tracker.getStatus());
+  handleIpc('app:icon', async (appId) => {
+    const normalizedId = typeof appId === 'string' && appId.length <= 512 ? appId : '';
+    const source = store.getAppIconSource(normalizedId);
+    if (!source) return null;
+    const fingerprint = `${source.tracked ? 'tracked' : 'limit'}\0${source.appName}\0${source.executablePath || ''}`;
+    const cached = appIconCache.get(normalizedId);
+    if (cached?.fingerprint === fingerprint) {
+      setBoundedCache(appIconCache, normalizedId, cached);
+      return cached.dataUrl;
+    }
+    const missed = appIconMissCache.get(normalizedId);
+    if (missed?.fingerprint === fingerprint && missed.retryAt > Date.now()) return null;
+    const pending = appIconPending.get(normalizedId);
+    if (pending?.fingerprint === fingerprint) return pending.promise;
+    if (appIconPending.size >= MAX_PENDING_APP_ICONS) return null;
+    const promise = loadAppIcon(normalizedId, source, fingerprint)
+      .finally(() => {
+        if (appIconPending.get(normalizedId)?.promise === promise) appIconPending.delete(normalizedId);
+      });
+    appIconPending.set(normalizedId, { fingerprint, promise });
+    return promise;
+  });
   handleIpc('tracker:set-enabled', (enabled) => {
     const settings = store.updateSettings({ trackingEnabled: Boolean(enabled) });
     refreshTrayMenu();

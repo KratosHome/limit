@@ -20,7 +20,7 @@ interface AppRouterProps {
 }
 
 export function AppRouter({ data, theme, view, onEditLimit, onOpenActivity, onOpenLimits, onOpenPermissions, onOpenSettings, onPauseLimit, onSetLimit, onSettingsChange, onThemeChange }: AppRouterProps) {
-  if (view === 'activity') return <Activity data={data} onSetLimit={onSetLimit} />;
+  if (view === 'activity') return <Activity data={data} onSetLimit={onSetLimit} onOpenSettings={onOpenSettings} />;
   if (view === 'limits') return <Limits data={data} onAdd={() => onEditLimit()} onEdit={onEditLimit} onPause={onPauseLimit} />;
   if (view === 'settings') return <Settings data={data} theme={theme} onThemeChange={onThemeChange} onSettingsChange={onSettingsChange} onOpenPermissions={onOpenPermissions} />;
 

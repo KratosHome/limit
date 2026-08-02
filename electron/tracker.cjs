@@ -147,6 +147,7 @@ class ActivityTracker extends EventEmitter {
       const sample = {
         id,
         name: windowInfo.owner.name,
+        executablePath: typeof windowInfo.owner.path === 'string' ? windowInfo.owner.path : null,
         title: '',
         site: websiteTrackingEnabled ? siteFromUrl(windowInfo.url) : null,
       };

@@ -191,6 +191,11 @@ class UsageStore {
       lastSeenAt: null,
     });
     entry.name = sample.name;
+    if (typeof sample.executablePath === 'string'
+      && sample.executablePath.length <= 4096
+      && path.isAbsolute(sample.executablePath)) {
+      entry.executablePath = sample.executablePath;
+    }
     entry.lastTitle = sample.title || entry.lastTitle;
     entry.lastSeenAt = date.toISOString();
     entry.seconds = Math.max(0, entry.seconds + seconds);
@@ -232,7 +237,14 @@ class UsageStore {
     for (const day of Object.values(this.data.usageByDay)) {
       for (const entry of Object.values(day)) {
         const previous = apps.get(entry.id);
-        if (!previous || (entry.lastSeenAt || '') > (previous.lastSeenAt || '')) apps.set(entry.id, { ...entry });
+        if (!previous || (entry.lastSeenAt || '') > (previous.lastSeenAt || '')) {
+          apps.set(entry.id, {
+            id: entry.id,
+            name: entry.name,
+            category: entry.category || guessCategory(entry.name),
+            lastSeenAt: entry.lastSeenAt || null,
+          });
+        }
       }
     }
     for (const limit of Object.values(this.data.limits)) {
@@ -241,15 +253,40 @@ class UsageStore {
           id: limit.appId,
           name: limit.appName,
           category: guessCategory(limit.appName),
-          seconds: 0,
-          launches: 0,
-          hourly: {},
-          lastTitle: '',
           lastSeenAt: null,
         });
       }
     }
     return [...apps.values()].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+  }
+
+  getAppIconSource(appId) {
+    if (typeof appId !== 'string' || !appId) return null;
+    let tracked = false;
+    let name = null;
+    let nameLastSeenAt = '';
+    let executablePath = null;
+    let pathLastSeenAt = '';
+    for (const day of Object.values(this.data.usageByDay)) {
+      const entry = day?.[appId];
+      if (!entry) continue;
+      tracked = true;
+      const lastSeenAt = entry.lastSeenAt || '';
+      if (typeof entry.name === 'string' && lastSeenAt >= nameLastSeenAt) {
+        name = entry.name;
+        nameLastSeenAt = lastSeenAt;
+      }
+      if (typeof entry.executablePath === 'string'
+        && entry.executablePath
+        && entry.executablePath.length <= 4096
+        && path.isAbsolute(entry.executablePath)
+        && lastSeenAt >= pathLastSeenAt) {
+        executablePath = entry.executablePath;
+        pathLastSeenAt = lastSeenAt;
+      }
+    }
+    if (!name) name = this.data.limits[appId]?.appName || null;
+    return name ? { appId, appName: name, executablePath, tracked } : null;
   }
 
   getLimits() {

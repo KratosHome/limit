@@ -104,6 +104,7 @@ export const demoApi: LimitApi = {
     return { ...limit };
   },
   async openPermissions() { return false; },
+  async getAppIcon() { return null; },
   onDataUpdated() { return () => undefined; },
   onLimitNotification() { return () => undefined; },
 };

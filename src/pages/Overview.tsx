@@ -1,7 +1,8 @@
-import { ChevronDown, ArrowDownRight, ArrowUpRight, Clock3, Gauge, Globe2, ShieldCheck, Sparkles } from 'lucide-react';
+import { ChevronDown, ArrowDownRight, ArrowUpRight, Clock3, Gauge, ShieldCheck, Sparkles } from 'lucide-react';
 import { useId, useState } from 'react';
 import { ActivityChart } from '../components/ActivityChart';
 import { AppIcon } from '../components/AppIcon';
+import { SiteUsagePanel } from '../components/SiteUsagePanel';
 import { Button } from '../components/ui/button';
 import { formatChange, formatDuration, formatFullDate, formatMinutes } from '../lib/format';
 import type { AppLimit, AppUsage, DashboardData } from '../types';
@@ -37,9 +38,6 @@ function TopAppRow({ app, onOpenSettings, totalSeconds, websiteTrackingEnabled }
   const [expanded, setExpanded] = useState(true);
   const sitesPanelId = useId();
   const sites = app.sites ?? [];
-  const visibleSites = sites.slice(0, 5);
-  const hiddenSiteCount = Math.max(0, sites.length - visibleSites.length);
-  const unattributedSeconds = Math.max(0, app.seconds - sites.reduce((sum, site) => sum + site.seconds, 0));
   const isBrowser = app.isBrowser || sites.length > 0 || app.category === 'Браузер';
   const share = totalSeconds ? Math.min(100, (app.seconds / totalSeconds) * 100) : 0;
 
@@ -74,40 +72,8 @@ function TopAppRow({ app, onOpenSettings, totalSeconds, websiteTrackingEnabled }
       </div>
 
       {isBrowser && (
-        <div id={sitesPanelId} hidden={!expanded} className="mb-2 ml-14 mr-3 border-l border-[var(--border)] pl-3">
-          {sites.length ? (
-            <ul className="space-y-1" aria-label={`Сайти в ${app.name}`}>
-              {visibleSites.map((site) => {
-                const siteShare = app.seconds ? Math.min(100, (site.seconds / app.seconds) * 100) : 0;
-                return (
-                  <li key={site.domain} className="rounded-lg px-2 py-1.5">
-                    <div className="flex min-w-0 items-center gap-2 text-[10px]">
-                      <Globe2 size={12} className="shrink-0 text-[var(--muted)]" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate font-semibold text-[var(--muted-strong)]" title={site.domain}>{site.domain}</span>
-                      <span className="shrink-0 font-bold tabular-nums text-[var(--muted-strong)]">{formatDuration(site.seconds)}</span>
-                    </div>
-                    <div className="ml-5 mt-1 h-0.5 overflow-hidden rounded-full bg-[var(--progress-track)]" aria-hidden="true">
-                      <div className="h-full rounded-full bg-[var(--accent)] opacity-70" style={{ width: `${Math.max(2, siteShare)}%` }} />
-                    </div>
-                  </li>
-                );
-              })}
-              {hiddenSiteCount > 0 && (
-                <li className="px-2 py-1.5 text-[10px] font-semibold text-[var(--muted)]">Ще сайтів: {hiddenSiteCount}</li>
-              )}
-              {unattributedSeconds >= 1 && (
-                <li className="flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] text-[var(--muted)]">
-                  <span className="truncate font-medium">Без визначеного домену</span>
-                  <span className="shrink-0 font-semibold tabular-nums">{formatDuration(unattributedSeconds)}</span>
-                </li>
-              )}
-            </ul>
-          ) : (
-            <div className="px-2 py-2">
-              <p className="text-[10px] font-medium leading-4 text-[var(--muted)]">{websiteTrackingEnabled ? 'Домен ще не отримано. Перевірте доступи macOS і відкрийте вкладку Arc.' : 'Відстеження сайтів зараз вимкнене.'}</p>
-              <Button variant="link" size="none" onClick={onOpenSettings} className="mt-2">Відкрити налаштування</Button>
-            </div>
-          )}
+        <div id={sitesPanelId} hidden={!expanded}>
+          <SiteUsagePanel app={app} websiteTrackingEnabled={websiteTrackingEnabled} onOpenSettings={onOpenSettings} className="mb-2 ml-14 mr-3" />
         </div>
       )}
     </div>

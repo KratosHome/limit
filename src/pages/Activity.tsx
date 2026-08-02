@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUp, CalendarDays, Search, SlidersHorizontal } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, CalendarDays, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { Fragment, useMemo, useState } from 'react';
 import { AppIcon } from '../components/AppIcon';
+import { SiteUsagePanel } from '../components/SiteUsagePanel';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { formatDuration } from '../lib/format';
@@ -11,13 +12,15 @@ type SortKey = 'name' | 'seconds' | 'launches' | 'share';
 interface ActivityProps {
   data: DashboardData;
   onSetLimit: (app: AppUsage) => void;
+  onOpenSettings: () => void;
 }
 
-export function Activity({ data, onSetLimit }: ActivityProps) {
+export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('Усі категорії');
   const [sortKey, setSortKey] = useState<SortKey>('seconds');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [expandedApps, setExpandedApps] = useState<Set<string>>(() => new Set());
   const categories = useMemo(() => ['Усі категорії', ...new Set(data.apps.map((app) => app.category))], [data.apps]);
 
   const apps = useMemo(() => {
@@ -42,6 +45,15 @@ export function Activity({ data, onSetLimit }: ActivityProps) {
       setSortKey(next);
       setSortDirection(next === 'name' ? 'asc' : 'desc');
     }
+  }
+
+  function toggleSites(appId: string) {
+    setExpandedApps((current) => {
+      const next = new Set(current);
+      if (next.has(appId)) next.delete(appId);
+      else next.add(appId);
+      return next;
+    });
   }
 
   function SortLabel({ value, children }: { value: SortKey; children: React.ReactNode }) {
@@ -94,34 +106,53 @@ export function Activity({ data, onSetLimit }: ActivityProps) {
             const share = data.totalSeconds ? (app.seconds / data.totalSeconds) * 100 : 0;
             const limitSeconds = (app.limitMinutes || 0) * 60;
             const limitProgress = limitSeconds ? Math.min(100, (app.seconds / limitSeconds) * 100) : 0;
+            const isBrowser = app.isBrowser || app.sites.length > 0 || app.category === 'Браузер';
+            const expanded = expandedApps.has(app.id);
+            const sitesPanelId = `activity-sites-${app.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
             return (
-              <div role="row" key={app.id} className="grid grid-cols-[minmax(250px,1.5fr)_130px_150px_105px_155px] items-center border-b border-[var(--border)] px-5 py-3.5 last:border-b-0 hover:bg-[var(--surface-hover)]">
-                <div role="cell" className="flex min-w-0 items-center gap-3">
-                  <AppIcon id={app.id} name={app.name} />
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] font-bold text-[var(--text)]">{app.name}</div>
-                    <div className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">{share.toFixed(1)}% загального часу</div>
+              <Fragment key={app.id}>
+                <div role="row" className={`grid grid-cols-[minmax(250px,1.5fr)_130px_150px_105px_155px] items-center px-5 py-3.5 hover:bg-[var(--surface-hover)] ${expanded ? '' : 'border-b border-[var(--border)]'}`}>
+                  <div role="cell" className="flex min-w-0 items-center gap-3">
+                    <AppIcon id={app.id} name={app.name} />
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1">
+                        <div className="truncate text-[12px] font-bold text-[var(--text)]">{app.name}</div>
+                        {isBrowser && (
+                          <Button variant="icon" size="none" className="h-7 w-7 shrink-0" aria-expanded={expanded} aria-controls={sitesPanelId} aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} сайти для ${app.name}`} onClick={() => toggleSites(app.id)}>
+                            <ChevronDown size={13} aria-hidden="true" className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">{share.toFixed(1)}% загального часу</div>
+                    </div>
+                  </div>
+                  <span role="cell"><span className="rounded-lg bg-[var(--surface-muted)] px-2 py-1 text-[9px] font-bold text-[var(--muted-strong)]">{app.category}</span></span>
+                  <div role="cell">
+                    <div className="text-[12px] font-bold tabular-nums text-[var(--text)]">{formatDuration(app.seconds)}</div>
+                    <div className="mt-1.5 h-1 w-20 overflow-hidden rounded-full bg-[var(--progress-track)]"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.max(2, share)}%` }} /></div>
+                  </div>
+                  <span role="cell" className="text-[12px] font-semibold tabular-nums text-[var(--muted-strong)]">{app.launches}</span>
+                  <div role="cell" className="flex items-center justify-end">
+                    {app.limitEnabled && app.limitMinutes && data.days.length === 1 ? (
+                      <Button variant="ghost" size="none" onClick={() => onSetLimit(app)} className="group w-[128px] rounded-none text-left hover:bg-transparent">
+                        <div className="flex items-center justify-between text-[9px] font-bold text-[var(--muted-strong)]"><span>{formatDuration(app.seconds)}</span><span>{formatDuration(limitSeconds)}</span></div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]"><div className={`h-full rounded-full ${limitProgress >= 100 ? 'bg-rose-500' : limitProgress >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(2, limitProgress)}%` }} /></div>
+                      </Button>
+                    ) : app.limitEnabled && app.limitMinutes ? (
+                      <Button variant="subtle" size="none" onClick={() => onSetLimit(app)}>{formatDuration(app.limitMinutes * 60)} / день</Button>
+                    ) : (
+                      <Button variant="secondary" size="none" onClick={() => onSetLimit(app)} className="rounded-lg px-2.5 py-1.5 text-[10px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">+ Ліміт</Button>
+                    )}
                   </div>
                 </div>
-                <span role="cell"><span className="rounded-lg bg-[var(--surface-muted)] px-2 py-1 text-[9px] font-bold text-[var(--muted-strong)]">{app.category}</span></span>
-                <div role="cell">
-                  <div className="text-[12px] font-bold tabular-nums text-[var(--text)]">{formatDuration(app.seconds)}</div>
-                  <div className="mt-1.5 h-1 w-20 overflow-hidden rounded-full bg-[var(--progress-track)]"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.max(2, share)}%` }} /></div>
-                </div>
-                <span role="cell" className="text-[12px] font-semibold tabular-nums text-[var(--muted-strong)]">{app.launches}</span>
-                <div role="cell" className="flex items-center justify-end">
-                  {app.limitEnabled && app.limitMinutes && data.days.length === 1 ? (
-                    <Button variant="ghost" size="none" onClick={() => onSetLimit(app)} className="group w-[128px] rounded-none text-left hover:bg-transparent">
-                      <div className="flex items-center justify-between text-[9px] font-bold text-[var(--muted-strong)]"><span>{formatDuration(app.seconds)}</span><span>{formatDuration(limitSeconds)}</span></div>
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]"><div className={`h-full rounded-full ${limitProgress >= 100 ? 'bg-rose-500' : limitProgress >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(2, limitProgress)}%` }} /></div>
-                    </Button>
-                  ) : app.limitEnabled && app.limitMinutes ? (
-                    <Button variant="subtle" size="none" onClick={() => onSetLimit(app)}>{formatDuration(app.limitMinutes * 60)} / день</Button>
-                  ) : (
-                    <Button variant="secondary" size="none" onClick={() => onSetLimit(app)} className="rounded-lg px-2.5 py-1.5 text-[10px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]">+ Ліміт</Button>
-                  )}
-                </div>
-              </div>
+                {isBrowser && expanded && (
+                  <div id={sitesPanelId} role="row" className="border-b border-[var(--border)] px-5 pb-3">
+                    <div role="cell" className="ml-[52px] max-w-[430px]">
+                      <SiteUsagePanel app={app} websiteTrackingEnabled={data.settings.websiteTrackingEnabled} onOpenSettings={onOpenSettings} limit={10} />
+                    </div>
+                  </div>
+                )}
+              </Fragment>
             );
           })}
           {!apps.length && (
