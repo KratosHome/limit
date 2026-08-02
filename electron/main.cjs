@@ -100,12 +100,15 @@ function createWindow() {
 }
 
 function configureSessionSecurity() {
+  const scriptSources = app.isPackaged
+    ? "script-src 'self'"
+    : "script-src 'self' 'unsafe-inline'";
   const connectSources = app.isPackaged
     ? "connect-src 'self'"
     : "connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*";
   const contentSecurityPolicy = [
     "default-src 'self'",
-    "script-src 'self'",
+    scriptSources,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self' data:",
