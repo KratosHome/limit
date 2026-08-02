@@ -32,9 +32,17 @@ npm run dev
 ```bash
 npm test          # модульні тести сховища
 npm run build     # TypeScript + production renderer
+npm run lint      # ESLint для React, TypeScript і Electron
+npm run format:check # перевірка форматування Prettier
+npm run check     # усі перевірки, які виконує pre-push
 npm run package   # unpacked desktop build для поточної ОС
 npm run dist      # інсталятор/образ для поточної ОС
 ```
+
+Після `npm install` Husky автоматично вмикає Git hooks. `pre-commit` форматує та
+перевіряє лише staged-файли, а `pre-push` запускає ESLint, Prettier, тести й build.
+`commit-msg` перевіряє повідомлення за стандартом Conventional Commits, наприклад
+`feat: додати таймер`, `fix: виправити підрахунок часу` або `chore: оновити залежності`.
 
 Щоб увімкнути статистику сайтів на macOS, відкрийте **Налаштування → Відстеження сайтів** і підтвердьте системні дозволи Accessibility та Automation. Нові доменні дані почнуть накопичуватися після ввімкнення; повні URL не записуються.
 

@@ -21,7 +21,13 @@ function appBundlePath(filePath) {
 }
 
 function existingIconPath(value, platform, existsSync = fs.existsSync) {
-  if (typeof value !== 'string' || !value || value.length > MAX_PATH_LENGTH || value.includes('\0')) return null;
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > MAX_PATH_LENGTH ||
+    value.includes('\0')
+  )
+    return null;
   const pathApi = platformPath(platform);
   if (!pathApi.isAbsolute(value)) return null;
   if (platform === 'win32' && /^[\\/]{2}/.test(value)) return null;
@@ -32,8 +38,17 @@ function existingIconPath(value, platform, existsSync = fs.existsSync) {
 function safeApplicationName(value) {
   if (typeof value !== 'string') return null;
   const name = value.trim();
-  if (!name || name.length > 160 || name === '.' || name === '..' || /[\\/\0]/.test(name)) return null;
-  const basename = name.toLowerCase().endsWith('.app') ? name.slice(0, -4) : name;
+  if (
+    !name ||
+    name.length > 160 ||
+    name === '.' ||
+    name === '..' ||
+    /[\\/\0]/.test(name)
+  )
+    return null;
+  const basename = name.toLowerCase().endsWith('.app')
+    ? name.slice(0, -4)
+    : name;
   return basename && basename !== '.' && basename !== '..' ? basename : null;
 }
 
@@ -49,10 +64,10 @@ function macApplicationRoots(userHome = os.homedir()) {
   ];
 }
 
-function applicationPathFromName(appName, {
-  existsSync = fs.existsSync,
-  roots = macApplicationRoots(),
-} = {}) {
+function applicationPathFromName(
+  appName,
+  { existsSync = fs.existsSync, roots = macApplicationRoots() } = {},
+) {
   const name = safeApplicationName(appName);
   if (!name) return null;
   for (const root of roots) {
@@ -63,16 +78,18 @@ function applicationPathFromName(appName, {
 }
 
 function validBundleId(value) {
-  return typeof value === 'string'
-    && value.length <= 512
-    && value.includes('.')
-    && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value);
+  return (
+    typeof value === 'string' &&
+    value.length <= 512 &&
+    value.includes('.') &&
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value)
+  );
 }
 
-async function applicationPathFromBundleId(appId, {
-  execute = execFile,
-  existsSync = fs.existsSync,
-} = {}) {
+async function applicationPathFromBundleId(
+  appId,
+  { execute = execFile, existsSync = fs.existsSync } = {},
+) {
   if (!validBundleId(appId)) return null;
   try {
     const { stdout } = await execute(
@@ -91,14 +108,20 @@ async function applicationPathFromBundleId(appId, {
   }
 }
 
-async function bundleIdFromApplicationPath(applicationPath, {
-  execute = execFile,
-} = {}) {
-  if (typeof applicationPath !== 'string' || !applicationPath.endsWith('.app')) return null;
+async function bundleIdFromApplicationPath(
+  applicationPath,
+  { execute = execFile } = {},
+) {
+  if (typeof applicationPath !== 'string' || !applicationPath.endsWith('.app'))
+    return null;
   try {
     const { stdout } = await execute(
       '/usr/libexec/PlistBuddy',
-      ['-c', 'Print :CFBundleIdentifier', path.join(applicationPath, 'Contents', 'Info.plist')],
+      [
+        '-c',
+        'Print :CFBundleIdentifier',
+        path.join(applicationPath, 'Contents', 'Info.plist'),
+      ],
       { maxBuffer: 64 * 1024, timeout: 3000 },
     );
     const bundleId = String(stdout || '').trim();
@@ -108,14 +131,17 @@ async function bundleIdFromApplicationPath(applicationPath, {
   }
 }
 
-async function resolveApplicationIconPath({
-  appId,
-  appName,
-  allowAppIdPath = false,
-  executablePath,
-  platform = process.platform,
-  userHome = os.homedir(),
-}, dependencies = {}) {
+async function resolveApplicationIconPath(
+  {
+    appId,
+    appName,
+    allowAppIdPath = false,
+    executablePath,
+    platform = process.platform,
+    userHome = os.homedir(),
+  },
+  dependencies = {},
+) {
   const existsSync = dependencies.existsSync || fs.existsSync;
   const recordedPath = existingIconPath(executablePath, platform, existsSync);
   if (recordedPath) return recordedPath;
@@ -129,7 +155,10 @@ async function resolveApplicationIconPath({
   if (platform !== 'darwin') return null;
 
   const execute = dependencies.execute || execFile;
-  const bundlePath = await applicationPathFromBundleId(appId, { execute, existsSync });
+  const bundlePath = await applicationPathFromBundleId(appId, {
+    execute,
+    existsSync,
+  });
   if (bundlePath) return bundlePath;
 
   const namedPath = applicationPathFromName(appName, {
@@ -140,9 +169,15 @@ async function resolveApplicationIconPath({
 
   // Spotlight can be disabled. Keep the name fallback, but reject an explicit
   // bundle-id mismatch so an equally named app cannot supply the wrong icon.
-  const candidateBundleId = await bundleIdFromApplicationPath(namedPath, { execute });
-  if (candidateBundleId && validBundleId(appId)
-    && candidateBundleId.toLowerCase() !== appId.toLowerCase()) return null;
+  const candidateBundleId = await bundleIdFromApplicationPath(namedPath, {
+    execute,
+  });
+  if (
+    candidateBundleId &&
+    validBundleId(appId) &&
+    candidateBundleId.toLowerCase() !== appId.toLowerCase()
+  )
+    return null;
   return namedPath;
 }
 

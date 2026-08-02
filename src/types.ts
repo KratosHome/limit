@@ -47,10 +47,16 @@ export interface Settings {
 }
 
 export interface TrackerStatus {
-  currentApp: { id: string; name: string; title: string; site?: { domain: string } | null } | null;
+  currentApp: {
+    id: string;
+    name: string;
+    title: string;
+    site?: { domain: string } | null;
+  } | null;
   permissionState: 'unknown' | 'granted' | 'denied' | 'unsupported' | 'error';
   lastError: string | null;
-  websitePermissionState: 'disabled' | 'pending' | 'granted' | 'unavailable' | 'denied' | 'error';
+  websitePermissionState:
+    'disabled' | 'pending' | 'granted' | 'unavailable' | 'denied' | 'error';
   lastWebsiteError: string | null;
   running: boolean;
 }
@@ -110,7 +116,9 @@ export interface LimitApi {
   openPermissions(kind?: PermissionKind): Promise<boolean>;
   getAppIcon(appId: string): Promise<string | null>;
   onDataUpdated(callback: (payload: { reason?: string }) => void): () => void;
-  onLimitNotification(callback: (payload: LimitNotification) => void): () => void;
+  onLimitNotification(
+    callback: (payload: LimitNotification) => void,
+  ): () => void;
 }
 
 declare global {

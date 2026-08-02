@@ -3,7 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('limitApi', {
   getDashboard: (range) => ipcRenderer.invoke('dashboard:get', range),
   getStatus: () => ipcRenderer.invoke('tracker:status'),
-  setTrackingEnabled: (enabled) => ipcRenderer.invoke('tracker:set-enabled', enabled),
+  setTrackingEnabled: (enabled) =>
+    ipcRenderer.invoke('tracker:set-enabled', enabled),
   updateSettings: (patch) => ipcRenderer.invoke('settings:update', patch),
   saveLimit: (limit) => ipcRenderer.invoke('limits:save', limit),
   deleteLimit: (appId) => ipcRenderer.invoke('limits:delete', appId),

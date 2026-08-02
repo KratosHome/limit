@@ -1,0 +1,353 @@
+import {
+  ArrowDown,
+  ArrowUp,
+  CalendarDays,
+  ChevronDown,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
+import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { AppIcon } from '../components/app-icon';
+import { SiteUsagePanel } from '../components/site-usage-panel';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { formatDuration } from '../lib/format';
+import type { AppUsage, DashboardData } from '../types';
+
+type SortKey = 'name' | 'seconds' | 'launches' | 'share';
+
+interface ActivityProps {
+  data: DashboardData;
+  onSetLimit: (app: AppUsage) => void;
+  onOpenSettings: () => void;
+}
+
+export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('Усі категорії');
+  const [sortKey, setSortKey] = useState<SortKey>('seconds');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [expandedApps, setExpandedApps] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const categories = useMemo(
+    () => ['Усі категорії', ...new Set(data.apps.map((app) => app.category))],
+    [data.apps],
+  );
+
+  const apps = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase('uk');
+    const filtered = data.apps.filter((app) => {
+      const matchesQuery =
+        !normalized || app.name.toLocaleLowerCase('uk').includes(normalized);
+      const matchesCategory =
+        category === 'Усі категорії' || app.category === category;
+      return matchesQuery && matchesCategory;
+    });
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    return filtered.sort((a, b) => {
+      if (sortKey === 'name')
+        return a.name.localeCompare(b.name, 'uk') * direction;
+      if (sortKey === 'launches') return (a.launches - b.launches) * direction;
+      if (sortKey === 'share') return (a.seconds - b.seconds) * direction;
+      return (a.seconds - b.seconds) * direction;
+    });
+  }, [category, data.apps, query, sortDirection, sortKey]);
+
+  function changeSort(next: SortKey) {
+    if (sortKey === next)
+      setSortDirection((value) => (value === 'asc' ? 'desc' : 'asc'));
+    else {
+      setSortKey(next);
+      setSortDirection(next === 'name' ? 'asc' : 'desc');
+    }
+  }
+
+  function toggleSites(appId: string) {
+    setExpandedApps((current) => {
+      const next = new Set(current);
+      if (next.has(appId)) next.delete(appId);
+      else next.add(appId);
+      return next;
+    });
+  }
+
+  function SortLabel({
+    value,
+    children,
+  }: {
+    value: SortKey;
+    children: ReactNode;
+  }) {
+    const active = sortKey === value;
+    const Icon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
+    return (
+      <Button
+        variant="ghost"
+        size="none"
+        onClick={() => changeSort(value)}
+        aria-label={`${String(children)}. ${active ? `Сортування ${sortDirection === 'asc' ? 'за зростанням' : 'за спаданням'}` : 'Сортувати'}`}
+        className={`inline-flex items-center gap-1 rounded-none uppercase tracking-[0.08em] hover:bg-transparent ${active ? 'text-[var(--text)]' : ''}`}
+      >
+        {children}
+        {active && <Icon size={11} />}
+      </Button>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-7">
+        <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
+          <SlidersHorizontal size={13} /> Детальна статистика
+        </div>
+        <h1 className="page-title">Активність</h1>
+        <p className="page-subtitle">
+          Переглядайте, куди йде ваш час, і знаходьте звички для покращення.
+        </p>
+      </div>
+
+      <div className="mb-4 grid grid-cols-[minmax(260px,1fr)_210px_auto] gap-3">
+        <label className="input-shell flex items-center gap-2.5">
+          <Search size={16} className="text-[var(--muted)]" />
+          <Input
+            variant="ghost"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Пошук застосунку…"
+          />
+        </label>
+        <label className="input-shell flex items-center gap-2">
+          <SlidersHorizontal size={15} className="text-[var(--muted)]" />
+          <select
+            aria-label="Категорія застосунку"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            className="w-full bg-transparent text-[12px] font-semibold outline-none"
+          >
+            {categories.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+        <div className="input-shell flex items-center gap-2 px-4 text-[11px] font-semibold text-[var(--muted-strong)]">
+          <CalendarDays size={15} /> {data.days.length}{' '}
+          {data.days.length === 1 ? 'день' : 'днів'}
+        </div>
+      </div>
+
+      <section className="card overflow-x-auto">
+        <div
+          role="table"
+          aria-label="Активність застосунків"
+          className="min-w-[830px] overflow-hidden rounded-2xl"
+        >
+          <div
+            role="row"
+            className="grid grid-cols-[minmax(250px,1.5fr)_130px_150px_105px_155px] items-center border-b border-[var(--border)] bg-[var(--surface-muted)] px-5 py-3 text-[9px] font-bold text-[var(--muted)]"
+          >
+            <div
+              role="columnheader"
+              aria-sort={
+                sortKey === 'name'
+                  ? sortDirection === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : 'none'
+              }
+            >
+              <SortLabel value="name">Застосунок</SortLabel>
+            </div>
+            <span role="columnheader" className="uppercase tracking-[0.08em]">
+              Категорія
+            </span>
+            <div
+              role="columnheader"
+              aria-sort={
+                sortKey === 'seconds'
+                  ? sortDirection === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : 'none'
+              }
+            >
+              <SortLabel value="seconds">Активний час</SortLabel>
+            </div>
+            <div
+              role="columnheader"
+              aria-sort={
+                sortKey === 'launches'
+                  ? sortDirection === 'asc'
+                    ? 'ascending'
+                    : 'descending'
+                  : 'none'
+              }
+            >
+              <SortLabel value="launches">Запуски</SortLabel>
+            </div>
+            <span
+              role="columnheader"
+              className="text-right uppercase tracking-[0.08em]"
+            >
+              Ліміт
+            </span>
+          </div>
+          <div role="rowgroup">
+            {apps.map((app) => {
+              const share = data.totalSeconds
+                ? (app.seconds / data.totalSeconds) * 100
+                : 0;
+              const limitSeconds = (app.limitMinutes || 0) * 60;
+              const limitProgress = limitSeconds
+                ? Math.min(100, (app.seconds / limitSeconds) * 100)
+                : 0;
+              const isBrowser =
+                app.isBrowser ||
+                app.sites.length > 0 ||
+                app.category === 'Браузер';
+              const expanded = expandedApps.has(app.id);
+              const sitesPanelId = `activity-sites-${app.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+              return (
+                <Fragment key={app.id}>
+                  <div
+                    role="row"
+                    className={`grid grid-cols-[minmax(250px,1.5fr)_130px_150px_105px_155px] items-center px-5 py-3.5 hover:bg-[var(--surface-hover)] ${expanded ? '' : 'border-b border-[var(--border)]'}`}
+                  >
+                    <div
+                      role="cell"
+                      className="flex min-w-0 items-center gap-3"
+                    >
+                      <AppIcon id={app.id} name={app.name} />
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-1">
+                          <div className="truncate text-[12px] font-bold text-[var(--text)]">
+                            {app.name}
+                          </div>
+                          {isBrowser && (
+                            <Button
+                              variant="icon"
+                              size="none"
+                              className="h-7 w-7 shrink-0"
+                              aria-expanded={expanded}
+                              aria-controls={sitesPanelId}
+                              aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} сайти для ${app.name}`}
+                              onClick={() => toggleSites(app.id)}
+                            >
+                              <ChevronDown
+                                size={13}
+                                aria-hidden="true"
+                                className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+                              />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">
+                          {share.toFixed(1)}% загального часу
+                        </div>
+                      </div>
+                    </div>
+                    <span role="cell">
+                      <span className="rounded-lg bg-[var(--surface-muted)] px-2 py-1 text-[9px] font-bold text-[var(--muted-strong)]">
+                        {app.category}
+                      </span>
+                    </span>
+                    <div role="cell">
+                      <div className="text-[12px] font-bold tabular-nums text-[var(--text)]">
+                        {formatDuration(app.seconds)}
+                      </div>
+                      <div className="mt-1.5 h-1 w-20 overflow-hidden rounded-full bg-[var(--progress-track)]">
+                        <div
+                          className="h-full rounded-full bg-[var(--accent)]"
+                          style={{ width: `${Math.max(2, share)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span
+                      role="cell"
+                      className="text-[12px] font-semibold tabular-nums text-[var(--muted-strong)]"
+                    >
+                      {app.launches}
+                    </span>
+                    <div role="cell" className="flex items-center justify-end">
+                      {app.limitEnabled &&
+                      app.limitMinutes &&
+                      data.days.length === 1 ? (
+                        <Button
+                          variant="ghost"
+                          size="none"
+                          onClick={() => onSetLimit(app)}
+                          className="group w-[128px] rounded-none text-left hover:bg-transparent"
+                        >
+                          <div className="flex items-center justify-between text-[9px] font-bold text-[var(--muted-strong)]">
+                            <span>{formatDuration(app.seconds)}</span>
+                            <span>{formatDuration(limitSeconds)}</span>
+                          </div>
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]">
+                            <div
+                              className={`h-full rounded-full ${limitProgress >= 100 ? 'bg-rose-500' : limitProgress >= 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                              style={{
+                                width: `${Math.max(2, limitProgress)}%`,
+                              }}
+                            />
+                          </div>
+                        </Button>
+                      ) : app.limitEnabled && app.limitMinutes ? (
+                        <Button
+                          variant="subtle"
+                          size="none"
+                          onClick={() => onSetLimit(app)}
+                        >
+                          {formatDuration(app.limitMinutes * 60)} / день
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          size="none"
+                          onClick={() => onSetLimit(app)}
+                          className="rounded-lg px-2.5 py-1.5 text-[10px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]"
+                        >
+                          + Ліміт
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {isBrowser && expanded && (
+                    <div
+                      id={sitesPanelId}
+                      role="row"
+                      className="border-b border-[var(--border)] px-5 pb-3"
+                    >
+                      <div role="cell" className="ml-[52px] max-w-[430px]">
+                        <SiteUsagePanel
+                          app={app}
+                          websiteTrackingEnabled={
+                            data.settings.websiteTrackingEnabled
+                          }
+                          onOpenSettings={onOpenSettings}
+                          limit={10}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })}
+            {!apps.length && (
+              <div className="flex flex-col items-center px-6 py-20 text-center">
+                <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-[var(--surface-muted)] text-[var(--muted)]">
+                  <Search size={20} />
+                </div>
+                <h3 className="text-[13px] font-bold text-[var(--text)]">
+                  Нічого не знайдено
+                </h3>
+                <p className="mt-1 max-w-sm text-[11px] leading-5 text-[var(--muted)]">
+                  Спробуйте іншу назву або скиньте фільтр категорії.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

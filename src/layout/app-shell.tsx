@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react';
+
 interface AppShellProps {
-  children: React.ReactNode;
-  header: React.ReactNode;
-  sidebar: React.ReactNode;
+  children: ReactNode;
+  header: ReactNode;
+  sidebar: ReactNode;
 }
 
 export function AppShell({ children, header, sidebar }: AppShellProps) {
@@ -11,7 +13,9 @@ export function AppShell({ children, header, sidebar }: AppShellProps) {
       <div className="flex min-w-0 flex-1 flex-col">
         {header}
         <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1240px] px-7 py-7">{children}</div>
+          <div className="mx-auto w-full max-w-[1240px] px-7 py-7">
+            {children}
+          </div>
         </main>
       </div>
     </div>

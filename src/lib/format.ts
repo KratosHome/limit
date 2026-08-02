@@ -13,16 +13,24 @@ export function offsetDay(date: Date, amount: number): Date {
   return result;
 }
 
-export function rangeForPeriod(period: PeriodKey, custom?: DateRange): DateRange {
+export function rangeForPeriod(
+  period: PeriodKey,
+  custom?: DateRange,
+): DateRange {
   const now = new Date();
   const today = toDayKey(now);
   if (period === 'yesterday') {
     const yesterday = toDayKey(offsetDay(now, -1));
     return { from: yesterday, to: yesterday };
   }
-  if (period === '7days') return { from: toDayKey(offsetDay(now, -6)), to: today };
-  if (period === '30days') return { from: toDayKey(offsetDay(now, -29)), to: today };
-  if (period === 'custom' && custom) return custom.from <= custom.to ? custom : { from: custom.to, to: custom.from };
+  if (period === '7days')
+    return { from: toDayKey(offsetDay(now, -6)), to: today };
+  if (period === '30days')
+    return { from: toDayKey(offsetDay(now, -29)), to: today };
+  if (period === 'custom' && custom)
+    return custom.from <= custom.to
+      ? custom
+      : { from: custom.to, to: custom.from };
   return { from: today, to: today };
 }
 
@@ -30,7 +38,10 @@ export function formatDuration(seconds: number, compact = false): string {
   const safeSeconds = Math.max(0, Math.round(seconds));
   const hours = Math.floor(safeSeconds / 3600);
   const minutes = Math.floor((safeSeconds % 3600) / 60);
-  if (hours && minutes) return compact ? `${hours} год ${minutes} хв` : `${hours} год ${minutes} хв`;
+  if (hours && minutes)
+    return compact
+      ? `${hours} год ${minutes} хв`
+      : `${hours} год ${minutes} хв`;
   if (hours) return `${hours} год`;
   if (minutes) return `${minutes} хв`;
   return safeSeconds > 0 ? '< 1 хв' : '0 хв';
@@ -47,7 +58,10 @@ export function formatChange(current: number, previous: number): number | null {
 
 export function formatShortDate(key: string): string {
   const [year, month, day] = key.split('-').map(Number);
-  return new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short' }).format(new Date(year, month - 1, day));
+  return new Intl.DateTimeFormat('uk-UA', {
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(year, month - 1, day));
 }
 
 export function formatFullDate(date = new Date()): string {
@@ -80,6 +94,7 @@ const appPalettes = [
 
 export function appPalette(id: string): [string, string] {
   let hash = 0;
-  for (let index = 0; index < id.length; index += 1) hash = (hash * 31 + id.charCodeAt(index)) | 0;
+  for (let index = 0; index < id.length; index += 1)
+    hash = (hash * 31 + id.charCodeAt(index)) | 0;
   return appPalettes[Math.abs(hash) % appPalettes.length] as [string, string];
 }

@@ -5,7 +5,12 @@ const test = require('node:test');
 const { UsageStore } = require('./store.cjs');
 
 function createStore() {
-  return new UsageStore(path.join(os.tmpdir(), `limit-store-test-${process.pid}-${Math.random()}.json`));
+  return new UsageStore(
+    path.join(
+      os.tmpdir(),
+      `limit-store-test-${process.pid}-${Math.random()}.json`,
+    ),
+  );
 }
 
 test('getAppIconSource keeps an older usable path while using the latest name', () => {
@@ -70,10 +75,12 @@ test('getKnownApps exposes only renderer-safe application metadata', () => {
     },
   };
 
-  assert.deepEqual(store.getKnownApps(), [{
-    id: 'com.example.App',
-    name: 'Example',
-    category: 'Інше',
-    lastSeenAt: '2026-08-02T10:00:00.000Z',
-  }]);
+  assert.deepEqual(store.getKnownApps(), [
+    {
+      id: 'com.example.App',
+      name: 'Example',
+      category: 'Інше',
+      lastSeenAt: '2026-08-02T10:00:00.000Z',
+    },
+  ]);
 });

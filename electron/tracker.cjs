@@ -6,7 +6,8 @@ function siteFromUrl(value) {
   if (typeof value !== 'string' || !value) return null;
   try {
     const parsed = new URL(value);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+      return null;
     const domain = parsed.hostname
       .toLowerCase()
       .replace(/\.$/, '')
@@ -19,22 +20,44 @@ function siteFromUrl(value) {
 
 function websitePermissionState(error) {
   if (!error) return 'granted';
-  return /permission|accessibility|automation|not authorized|-1743/i.test(error) ? 'denied' : 'error';
+  return /permission|accessibility|automation|not authorized|-1743/i.test(error)
+    ? 'denied'
+    : 'error';
 }
 
 function isSupportedBrowserWindow(windowInfo) {
   const bundleId = String(windowInfo?.owner?.bundleId || '').toLowerCase();
-  if (bundleId === 'company.thebrowser.browser' || bundleId === 'com.apple.safari' || bundleId === 'com.apple.safaritechnologypreview') return true;
-  return /^(com\.google\.chrome|com\.brave\.browser|com\.microsoft\.edgemac|com\.operasoftware\.opera|com\.vivaldi\.vivaldi)/.test(bundleId);
+  if (
+    bundleId === 'company.thebrowser.browser' ||
+    bundleId === 'com.apple.safari' ||
+    bundleId === 'com.apple.safaritechnologypreview'
+  )
+    return true;
+  return /^(com\.google\.chrome|com\.brave\.browser|com\.microsoft\.edgemac|com\.operasoftware\.opera|com\.vivaldi\.vivaldi)/.test(
+    bundleId,
+  );
 }
 
 class ActivityTracker extends EventEmitter {
-  constructor({ store, getIdleSeconds = () => 0, getSystemState = null, hasAccessibilityPermission = null, ownProcessId, intervalMs = 5000, activeWindowProvider = null }) {
+  constructor({
+    store,
+    getIdleSeconds = () => 0,
+    getSystemState = null,
+    hasAccessibilityPermission = null,
+    ownProcessId,
+    intervalMs = 5000,
+    activeWindowProvider = null,
+  }) {
     super();
     this.store = store;
     this.getIdleSeconds = getIdleSeconds;
-    this.getSystemState = getSystemState || ((threshold) => this.getIdleSeconds() >= threshold ? 'idle' : 'active');
-    this.hasAccessibilityPermission = typeof hasAccessibilityPermission === 'function' ? hasAccessibilityPermission : null;
+    this.getSystemState =
+      getSystemState ||
+      ((threshold) => (this.getIdleSeconds() >= threshold ? 'idle' : 'active'));
+    this.hasAccessibilityPermission =
+      typeof hasAccessibilityPermission === 'function'
+        ? hasAccessibilityPermission
+        : null;
     this.ownProcessId = ownProcessId;
     this.intervalMs = intervalMs;
     this.timer = null;
@@ -93,13 +116,18 @@ class ActivityTracker extends EventEmitter {
     this.ticking = true;
     const generation = this.generation;
     const monotonicNow = performance.now();
-    const elapsedRaw = this.lastTickAt ? (monotonicNow - this.lastTickAt) / 1000 : 0;
-    const elapsed = elapsedRaw <= this.intervalMs / 1000 * 2 ? elapsedRaw : 0;
+    const elapsedRaw = this.lastTickAt
+      ? (monotonicNow - this.lastTickAt) / 1000
+      : 0;
+    const elapsed = elapsedRaw <= (this.intervalMs / 1000) * 2 ? elapsedRaw : 0;
     this.lastTickAt = monotonicNow;
 
     try {
       const settings = this.store.getSettings();
-      if (!settings.trackingEnabled || this.getSystemState(settings.idleThresholdSeconds) !== 'active') {
+      if (
+        !settings.trackingEnabled ||
+        this.getSystemState(settings.idleThresholdSeconds) !== 'active'
+      ) {
         this.lastAppId = null;
         this.lastSample = null;
         this.lastSampleIsLaunch = false;
@@ -110,11 +138,15 @@ class ActivityTracker extends EventEmitter {
 
       const activeWin = await this.loadProvider();
       const websiteTrackingEnabled = settings.websiteTrackingEnabled === true;
-      if (websiteTrackingEnabled && this.websitePermissionState === 'disabled') this.websitePermissionState = 'pending';
-      const accessibilityBlocked = websiteTrackingEnabled
-        && this.hasAccessibilityPermission
-        && !this.hasAccessibilityPermission();
-      const windowInfo = await activeWin({ websiteTrackingEnabled: websiteTrackingEnabled && !accessibilityBlocked });
+      if (websiteTrackingEnabled && this.websitePermissionState === 'disabled')
+        this.websitePermissionState = 'pending';
+      const accessibilityBlocked =
+        websiteTrackingEnabled &&
+        this.hasAccessibilityPermission &&
+        !this.hasAccessibilityPermission();
+      const windowInfo = await activeWin({
+        websiteTrackingEnabled: websiteTrackingEnabled && !accessibilityBlocked,
+      });
       if (generation !== this.generation) return;
       if (websiteTrackingEnabled) {
         this.lastWebsiteError = accessibilityBlocked
@@ -123,7 +155,9 @@ class ActivityTracker extends EventEmitter {
         if (accessibilityBlocked) {
           this.websitePermissionState = 'denied';
         } else if (this.lastWebsiteError) {
-          this.websitePermissionState = websitePermissionState(this.lastWebsiteError);
+          this.websitePermissionState = websitePermissionState(
+            this.lastWebsiteError,
+          );
         } else if (isSupportedBrowserWindow(windowInfo)) {
           if (typeof windowInfo.url === 'string' && windowInfo.url.trim()) {
             this.websitePermissionState = 'granted';
@@ -135,7 +169,10 @@ class ActivityTracker extends EventEmitter {
         this.lastWebsiteError = null;
         this.websitePermissionState = 'disabled';
       }
-      if (!windowInfo?.owner?.name || windowInfo.owner.processId === this.ownProcessId) {
+      if (
+        !windowInfo?.owner?.name ||
+        windowInfo.owner.processId === this.ownProcessId
+      ) {
         this.lastAppId = null;
         this.lastSample = null;
         this.lastSampleIsLaunch = false;
@@ -143,17 +180,28 @@ class ActivityTracker extends EventEmitter {
         return;
       }
 
-      const id = windowInfo.owner.bundleId || windowInfo.owner.path || windowInfo.owner.name.toLowerCase();
+      const id =
+        windowInfo.owner.bundleId ||
+        windowInfo.owner.path ||
+        windowInfo.owner.name.toLowerCase();
       const sample = {
         id,
         name: windowInfo.owner.name,
-        executablePath: typeof windowInfo.owner.path === 'string' ? windowInfo.owner.path : null,
+        executablePath:
+          typeof windowInfo.owner.path === 'string'
+            ? windowInfo.owner.path
+            : null,
         title: '',
         site: websiteTrackingEnabled ? siteFromUrl(windowInfo.url) : null,
       };
       const isLaunch = this.lastAppId !== id;
       if (this.lastSample && elapsed > 0) {
-        this.store.recordSample(this.lastSample, elapsed, this.lastSampleIsLaunch, new Date());
+        this.store.recordSample(
+          this.lastSample,
+          elapsed,
+          this.lastSampleIsLaunch,
+          new Date(),
+        );
         this.emit('sample', this.lastSample);
       }
       this.lastAppId = id;
@@ -169,9 +217,13 @@ class ActivityTracker extends EventEmitter {
       this.lastSampleIsLaunch = false;
       this.currentApp = null;
       this.lastError = error instanceof Error ? error.message : String(error);
-      this.permissionState = /wayland|unavailable|unsupported/i.test(this.lastError)
+      this.permissionState = /wayland|unavailable|unsupported/i.test(
+        this.lastError,
+      )
         ? 'unsupported'
-        : /permission|screen recording|accessibility/i.test(this.lastError) ? 'denied' : 'error';
+        : /permission|screen recording|accessibility/i.test(this.lastError)
+          ? 'denied'
+          : 'error';
       this.emit('updated', this.getStatus());
     } finally {
       this.ticking = false;
@@ -179,4 +231,9 @@ class ActivityTracker extends EventEmitter {
   }
 }
 
-module.exports = { ActivityTracker, isSupportedBrowserWindow, siteFromUrl, websitePermissionState };
+module.exports = {
+  ActivityTracker,
+  isSupportedBrowserWindow,
+  siteFromUrl,
+  websitePermissionState,
+};

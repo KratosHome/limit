@@ -10,8 +10,10 @@ function websiteTrackingErrorKind(error) {
   const details = [error?.message, error?.stderr, error?.stdout]
     .filter((value) => typeof value === 'string')
     .join('\n');
-  if (/accessibility|ax is not trusted/i.test(details)) return 'accessibility-permission';
-  if (/automation|not authorized|-1743/i.test(details)) return 'automation-permission';
+  if (/accessibility|ax is not trusted/i.test(details))
+    return 'accessibility-permission';
+  if (/automation|not authorized|-1743/i.test(details))
+    return 'automation-permission';
   return 'url-provider-error';
 }
 
@@ -40,7 +42,10 @@ function findWindowsBinding(directory) {
   return null;
 }
 
-async function loadActiveWindowProvider(platform = process.platform, { execute = execFile } = {}) {
+async function loadActiveWindowProvider(
+  platform = process.platform,
+  { execute = execFile } = {},
+) {
   const root = packageDirectory();
 
   if (platform === 'darwin') {
@@ -79,7 +84,10 @@ async function loadActiveWindowProvider(platform = process.platform, { execute =
     const module = await import(moduleUrl);
     return async () => {
       const result = await module.activeWindow();
-      if (!result) throw new Error('X11 foreground tracking is unavailable; xprop/xwininfo may be missing');
+      if (!result)
+        throw new Error(
+          'X11 foreground tracking is unavailable; xprop/xwininfo may be missing',
+        );
       return result;
     };
   }
@@ -87,7 +95,8 @@ async function loadActiveWindowProvider(platform = process.platform, { execute =
   if (platform === 'win32') {
     const bindingRoot = unpackedPath(path.join(root, 'lib', 'binding'));
     const bindingPath = findWindowsBinding(bindingRoot);
-    if (!bindingPath) throw new Error('Native foreground-window binding is missing');
+    if (!bindingPath)
+      throw new Error('Native foreground-window binding is missing');
     const addon = require(bindingPath);
     return async () => addon.getActiveWindow();
   }

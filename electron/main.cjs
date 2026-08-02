@@ -12,7 +12,9 @@ const {
   systemPreferences,
   Tray,
 } = require('electron');
-const { createAccessibilityPermissionController } = require('./accessibility-permission.cjs');
+const {
+  createAccessibilityPermissionController,
+} = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const { UsageStore, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
@@ -34,7 +36,13 @@ const appIconPending = new Map();
 const MAX_APP_ICON_CACHE_ENTRIES = 256;
 const MAX_PENDING_APP_ICONS = 128;
 
-app.setPath('userData', path.join(app.getPath('appData'), app.isPackaged ? 'Limit' : 'Limit Development'));
+app.setPath(
+  'userData',
+  path.join(
+    app.getPath('appData'),
+    app.isPackaged ? 'Limit' : 'Limit Development',
+  ),
+);
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   isQuitting = true;
@@ -66,9 +74,11 @@ function createWindow() {
     },
   });
 
-  const rendererUrl = !app.isPackaged && process.env.ELECTRON_RENDERER_URL === 'http://127.0.0.1:5173'
-    ? process.env.ELECTRON_RENDERER_URL
-    : null;
+  const rendererUrl =
+    !app.isPackaged &&
+    process.env.ELECTRON_RENDERER_URL === 'http://127.0.0.1:5173'
+      ? process.env.ELECTRON_RENDERER_URL
+      : null;
   if (rendererUrl) {
     void mainWindow.loadURL(rendererUrl);
   } else {
@@ -90,7 +100,9 @@ function createWindow() {
 
 function createTray() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="5" fill="#111827"/><path d="M9 4.2v5.2l3.2 1.8" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="9" r="5.1" fill="none" stroke="white" stroke-width="1.2"/></svg>`;
-  const icon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+  const icon = nativeImage.createFromDataURL(
+    `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
+  );
   if (process.platform === 'darwin') icon.setTemplateImage(true);
   tray = new Tray(icon.resize({ width: 18, height: 18 }));
   tray.setToolTip('Limit — трекер часу');
@@ -113,13 +125,20 @@ function refreshTrayMenu() {
         },
       },
       { type: 'separator' },
-      { label: 'Вийти', click: () => { isQuitting = true; app.quit(); } },
+      {
+        label: 'Вийти',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
     ]),
   );
 }
 
 function broadcastUpdate(payload = {}) {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('data:updated', payload);
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send('data:updated', payload);
 }
 
 function notifyLimit(limit, kind, usedSeconds) {
@@ -129,17 +148,23 @@ function notifyLimit(limit, kind, usedSeconds) {
     kind,
     appId: limit.appId,
     appName: limit.appName,
-    title: isWarning ? `Наближається ліміт ${limit.appName}` : `Ліміт ${limit.appName} досягнуто`,
+    title: isWarning
+      ? `Наближається ліміт ${limit.appName}`
+      : `Ліміт ${limit.appName} досягнуто`,
     message: isWarning
       ? `Залишилося ${Math.max(1, limit.dailyLimitMinutes - usedMinutes)} хв.`
       : `Сьогодні використано ${usedMinutes} хв. із ${limit.dailyLimitMinutes} хв.`,
   };
 
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('limits:notification', payload);
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send('limits:notification', payload);
   if (!Notification.isSupported()) return Promise.resolve(false);
 
   return new Promise((resolve) => {
-    const notification = new Notification({ title: payload.title, body: payload.message });
+    const notification = new Notification({
+      title: payload.title,
+      body: payload.message,
+    });
     let settled = false;
     const finish = (delivered) => {
       if (settled) return;
@@ -161,7 +186,11 @@ function notifyLimit(limit, kind, usedSeconds) {
 
 async function attemptLimitNotification(limit, kind, usedSeconds) {
   const key = `${localDay()}:${limit.appId}:${kind}`;
-  if (pendingAlerts.has(key) || (notificationRetryAt.get(key) || 0) > Date.now()) return;
+  if (
+    pendingAlerts.has(key) ||
+    (notificationRetryAt.get(key) || 0) > Date.now()
+  )
+    return;
   pendingAlerts.add(key);
   try {
     const delivered = await notifyLimit(limit, kind, usedSeconds);
@@ -184,10 +213,18 @@ function checkLimit(sample) {
   const today = localDay();
   const warningAt = limit.dailyLimitMinutes - limit.warningMinutes;
 
-  if (limit.warningMinutes > 0 && usedMinutes >= warningAt && usedMinutes < limit.dailyLimitMinutes && limit.lastWarningDate !== today) {
+  if (
+    limit.warningMinutes > 0 &&
+    usedMinutes >= warningAt &&
+    usedMinutes < limit.dailyLimitMinutes &&
+    limit.lastWarningDate !== today
+  ) {
     void attemptLimitNotification(limit, 'warning', usedSeconds);
   }
-  if (usedMinutes >= limit.dailyLimitMinutes && limit.lastReachedDate !== today) {
+  if (
+    usedMinutes >= limit.dailyLimitMinutes &&
+    limit.lastReachedDate !== today
+  ) {
     void attemptLimitNotification(limit, 'reached', usedSeconds);
   }
 }
@@ -216,10 +253,11 @@ function validateRange(range = {}) {
 
 function handleIpc(channel, handler) {
   ipcMain.handle(channel, (event, ...args) => {
-    const trustedFrame = mainWindow
-      && event.sender === mainWindow.webContents
-      && event.senderFrame === mainWindow.webContents.mainFrame
-      && event.senderFrame.url === mainWindow.webContents.getURL();
+    const trustedFrame =
+      mainWindow &&
+      event.sender === mainWindow.webContents &&
+      event.senderFrame === mainWindow.webContents.mainFrame &&
+      event.senderFrame.url === mainWindow.webContents.getURL();
     if (!trustedFrame) throw new Error('Недозволений IPC sender');
     return handler(...args);
   });
@@ -244,7 +282,10 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
       userHome: app.getPath('home'),
     });
     if (!iconPath) {
-      setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+      setBoundedCache(appIconMissCache, normalizedId, {
+        fingerprint,
+        retryAt: Date.now() + 30_000,
+      });
       return null;
     }
     let icon;
@@ -255,14 +296,20 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
       } catch {
         // The resolved bundle path is still a valid fallback if realpath fails.
       }
-      icon = await nativeImage.createThumbnailFromPath(thumbnailPath, { width: 128, height: 128 });
+      icon = await nativeImage.createThumbnailFromPath(thumbnailPath, {
+        width: 128,
+        height: 128,
+      });
     } else {
       icon = await app.getFileIcon(iconPath, {
         size: fileIconSize(process.platform),
       });
     }
     if (icon.isEmpty()) {
-      setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+      setBoundedCache(appIconMissCache, normalizedId, {
+        fingerprint,
+        retryAt: Date.now() + 30_000,
+      });
       return null;
     }
     const dataUrl = icon.toDataURL();
@@ -270,7 +317,10 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
     appIconMissCache.delete(normalizedId);
     return dataUrl;
   } catch {
-    setBoundedCache(appIconMissCache, normalizedId, { fingerprint, retryAt: Date.now() + 30_000 });
+    setBoundedCache(appIconMissCache, normalizedId, {
+      fingerprint,
+      retryAt: Date.now() + 30_000,
+    });
     return null;
   }
 }
@@ -278,11 +328,17 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
 function registerIpc() {
   handleIpc('dashboard:get', (range) => {
     const { from, to } = validateRange(range);
-    return { ...store.getDashboard(from, to), tracker: tracker.getStatus(), platform: process.platform, isPackaged: app.isPackaged };
+    return {
+      ...store.getDashboard(from, to),
+      tracker: tracker.getStatus(),
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+    };
   });
   handleIpc('tracker:status', () => tracker.getStatus());
   handleIpc('app:icon', async (appId) => {
-    const normalizedId = typeof appId === 'string' && appId.length <= 512 ? appId : '';
+    const normalizedId =
+      typeof appId === 'string' && appId.length <= 512 ? appId : '';
     const source = store.getAppIconSource(normalizedId);
     if (!source) return null;
     const fingerprint = `${source.tracked ? 'tracked' : 'limit'}\0${source.appName}\0${source.executablePath || ''}`;
@@ -292,19 +348,24 @@ function registerIpc() {
       return cached.dataUrl;
     }
     const missed = appIconMissCache.get(normalizedId);
-    if (missed?.fingerprint === fingerprint && missed.retryAt > Date.now()) return null;
+    if (missed?.fingerprint === fingerprint && missed.retryAt > Date.now())
+      return null;
     const pending = appIconPending.get(normalizedId);
     if (pending?.fingerprint === fingerprint) return pending.promise;
     if (appIconPending.size >= MAX_PENDING_APP_ICONS) return null;
-    const promise = loadAppIcon(normalizedId, source, fingerprint)
-      .finally(() => {
-        if (appIconPending.get(normalizedId)?.promise === promise) appIconPending.delete(normalizedId);
-      });
+    const promise = loadAppIcon(normalizedId, source, fingerprint).finally(
+      () => {
+        if (appIconPending.get(normalizedId)?.promise === promise)
+          appIconPending.delete(normalizedId);
+      },
+    );
     appIconPending.set(normalizedId, { fingerprint, promise });
     return promise;
   });
   handleIpc('tracker:set-enabled', (enabled) => {
-    const settings = store.updateSettings({ trackingEnabled: Boolean(enabled) });
+    const settings = store.updateSettings({
+      trackingEnabled: Boolean(enabled),
+    });
     refreshTrayMenu();
     broadcastUpdate({ reason: 'settings' });
     return settings;
@@ -312,7 +373,11 @@ function registerIpc() {
   handleIpc('settings:update', (patch) => {
     const previousSettings = store.getSettings();
     const settings = store.updateSettings(patch || {});
-    if (process.platform === 'darwin' && patch?.websiteTrackingEnabled === true && !previousSettings.websiteTrackingEnabled) {
+    if (
+      process.platform === 'darwin' &&
+      patch?.websiteTrackingEnabled === true &&
+      !previousSettings.websiteTrackingEnabled
+    ) {
       accessibilityPermission?.requestOnce();
     }
     if (typeof patch?.launchAtLogin === 'boolean' && app.isPackaged) {
@@ -340,46 +405,65 @@ function registerIpc() {
   handleIpc('permissions:open', async (kind) => {
     if (process.platform === 'darwin') {
       if (kind === 'accessibility') accessibilityPermission?.requestOnce();
-      const section = kind === 'automation' ? 'Privacy_Automation' : 'Privacy_Accessibility';
-      await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${section}`);
+      const section =
+        kind === 'automation' ? 'Privacy_Automation' : 'Privacy_Accessibility';
+      await shell.openExternal(
+        `x-apple.systempreferences:com.apple.preference.security?${section}`,
+      );
       return true;
     }
     return false;
   });
 }
 
-if (hasSingleInstanceLock) app.whenReady().then(() => {
-  store = new UsageStore(path.join(app.getPath('userData'), 'usage-data.json'));
-  accessibilityPermission = createAccessibilityPermissionController({
-    platform: process.platform,
-    isTrustedAccessibilityClient: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt),
-  });
-  tracker = new ActivityTracker({
-    store,
-    getSystemState: (threshold) => powerMonitor.getSystemIdleState(threshold),
-    hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
-    ownProcessId: process.pid,
-    intervalMs: 2000,
-  });
-  registerIpc();
-  createWindow();
-  createTray();
-  tracker.on('sample', checkLimit);
-  tracker.on('updated', () => {
-    if (updateTimer) return;
-    updateTimer = setTimeout(() => {
-      updateTimer = null;
-      broadcastUpdate({ reason: 'sample' });
-    }, 3000);
-  });
-  tracker.start();
-  powerMonitor.on('suspend', () => { suspended = true; tracker.stop(); });
-  powerMonitor.on('lock-screen', () => { screenLocked = true; tracker.stop(); });
-  powerMonitor.on('resume', () => { suspended = false; if (!screenLocked) tracker.start(); });
-  powerMonitor.on('unlock-screen', () => { screenLocked = false; if (!suspended) tracker.start(); });
+if (hasSingleInstanceLock)
+  app.whenReady().then(() => {
+    store = new UsageStore(
+      path.join(app.getPath('userData'), 'usage-data.json'),
+    );
+    accessibilityPermission = createAccessibilityPermissionController({
+      platform: process.platform,
+      isTrustedAccessibilityClient: (prompt) =>
+        systemPreferences.isTrustedAccessibilityClient(prompt),
+    });
+    tracker = new ActivityTracker({
+      store,
+      getSystemState: (threshold) => powerMonitor.getSystemIdleState(threshold),
+      hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
+      ownProcessId: process.pid,
+      intervalMs: 2000,
+    });
+    registerIpc();
+    createWindow();
+    createTray();
+    tracker.on('sample', checkLimit);
+    tracker.on('updated', () => {
+      if (updateTimer) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = null;
+        broadcastUpdate({ reason: 'sample' });
+      }, 3000);
+    });
+    tracker.start();
+    powerMonitor.on('suspend', () => {
+      suspended = true;
+      tracker.stop();
+    });
+    powerMonitor.on('lock-screen', () => {
+      screenLocked = true;
+      tracker.stop();
+    });
+    powerMonitor.on('resume', () => {
+      suspended = false;
+      if (!screenLocked) tracker.start();
+    });
+    powerMonitor.on('unlock-screen', () => {
+      screenLocked = false;
+      if (!suspended) tracker.start();
+    });
 
-  app.on('activate', showMainWindow);
-});
+    app.on('activate', showMainWindow);
+  });
 
 if (hasSingleInstanceLock) {
   app.on('second-instance', () => {

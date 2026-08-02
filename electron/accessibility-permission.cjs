@@ -18,7 +18,8 @@ function createAccessibilityPermissionController({
 
   function requestOnce() {
     if (!isMac || isGranted()) return true;
-    if (promptRequested || typeof isTrustedAccessibilityClient !== 'function') return false;
+    if (promptRequested || typeof isTrustedAccessibilityClient !== 'function')
+      return false;
     promptRequested = true;
     try {
       // The prompt-capable call is reserved for an explicit user action.

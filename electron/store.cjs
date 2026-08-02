@@ -26,12 +26,16 @@ function localDay(date = new Date()) {
 
 function guessCategory(appName = '') {
   const name = appName.toLowerCase();
-  if (/(chrome|safari|firefox|edge|opera|brave|arc)/.test(name)) return 'Браузер';
-  if (/(telegram|slack|discord|messages|whatsapp|signal|teams|zoom)/.test(name)) return 'Спілкування';
-  if (/(code|cursor|webstorm|idea|xcode|terminal|iterm|warp|github)/.test(name)) return 'Розробка';
+  if (/(chrome|safari|firefox|edge|opera|brave|arc)/.test(name))
+    return 'Браузер';
+  if (/(telegram|slack|discord|messages|whatsapp|signal|teams|zoom)/.test(name))
+    return 'Спілкування';
+  if (/(code|cursor|webstorm|idea|xcode|terminal|iterm|warp|github)/.test(name))
+    return 'Розробка';
   if (/(figma|photoshop|illustrator|sketch|canva)/.test(name)) return 'Дизайн';
   if (/(spotify|music|youtube|vlc|netflix)/.test(name)) return 'Розваги';
-  if (/(notion|obsidian|notes|word|excel|pages|numbers)/.test(name)) return 'Продуктивність';
+  if (/(notion|obsidian|notes|word|excel|pages|numbers)/.test(name))
+    return 'Продуктивність';
   return 'Інше';
 }
 
@@ -43,20 +47,33 @@ function normalizeSiteDomain(value) {
   if (!domain || domain.length > 253 || /[\s\\/:?#@]/.test(domain)) return null;
 
   const labels = domain.split('.');
-  if (labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
+  if (
+    labels.some(
+      (label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+    )
+  )
+    return null;
   return domain;
 }
 
 function normalizeData(value) {
   const fallback = cloneDefaultData();
   if (!value || typeof value !== 'object') return fallback;
-  const settings = value.settings && typeof value.settings === 'object' ? value.settings : {};
+  const settings =
+    value.settings && typeof value.settings === 'object' ? value.settings : {};
   return {
     ...fallback,
     ...value,
-    schemaVersion: Math.max(DEFAULT_DATA.schemaVersion, Number.isInteger(value.schemaVersion) ? value.schemaVersion : 1),
-    usageByDay: value.usageByDay && typeof value.usageByDay === 'object' ? value.usageByDay : {},
-    limits: value.limits && typeof value.limits === 'object' ? value.limits : {},
+    schemaVersion: Math.max(
+      DEFAULT_DATA.schemaVersion,
+      Number.isInteger(value.schemaVersion) ? value.schemaVersion : 1,
+    ),
+    usageByDay:
+      value.usageByDay && typeof value.usageByDay === 'object'
+        ? value.usageByDay
+        : {},
+    limits:
+      value.limits && typeof value.limits === 'object' ? value.limits : {},
     settings: {
       ...fallback.settings,
       ...settings,
@@ -101,18 +118,27 @@ class UsageStore {
   load() {
     try {
       if (!fs.existsSync(this.filePath)) return;
-      this.data = normalizeData(JSON.parse(fs.readFileSync(this.filePath, 'utf8')));
+      this.data = normalizeData(
+        JSON.parse(fs.readFileSync(this.filePath, 'utf8')),
+      );
     } catch (error) {
-      console.warn('Не вдалося прочитати локальну історію Limit:', error.message);
+      console.warn(
+        'Не вдалося прочитати локальну історію Limit:',
+        error.message,
+      );
       try {
         const recoveryPath = `${this.filePath}.corrupt-${Date.now()}`;
         fs.copyFileSync(this.filePath, recoveryPath);
         this.recoveryCreated = true;
       } catch (backupError) {
-        console.error('Не вдалося створити резервну копію пошкодженої історії:', backupError.message);
+        console.error(
+          'Не вдалося створити резервну копію пошкодженої історії:',
+          backupError.message,
+        );
         this.writeBlocked = true;
       }
-      this.lastPersistenceError = 'Не вдалося прочитати локальну історію. Створено резервну копію для відновлення.';
+      this.lastPersistenceError =
+        'Не вдалося прочитати локальну історію. Створено резервну копію для відновлення.';
       this.data = cloneDefaultData();
     }
   }
@@ -163,11 +189,17 @@ class UsageStore {
 
   updateSettings(patch) {
     const allowed = {};
-    if (typeof patch.trackingEnabled === 'boolean') allowed.trackingEnabled = patch.trackingEnabled;
-    if (typeof patch.websiteTrackingEnabled === 'boolean') allowed.websiteTrackingEnabled = patch.websiteTrackingEnabled;
-    if (typeof patch.launchAtLogin === 'boolean') allowed.launchAtLogin = patch.launchAtLogin;
+    if (typeof patch.trackingEnabled === 'boolean')
+      allowed.trackingEnabled = patch.trackingEnabled;
+    if (typeof patch.websiteTrackingEnabled === 'boolean')
+      allowed.websiteTrackingEnabled = patch.websiteTrackingEnabled;
+    if (typeof patch.launchAtLogin === 'boolean')
+      allowed.launchAtLogin = patch.launchAtLogin;
     if (Number.isFinite(patch.idleThresholdSeconds)) {
-      allowed.idleThresholdSeconds = Math.min(3600, Math.max(15, Math.round(patch.idleThresholdSeconds)));
+      allowed.idleThresholdSeconds = Math.min(
+        3600,
+        Math.max(15, Math.round(patch.idleThresholdSeconds)),
+      );
     }
     this.data.settings = { ...this.data.settings, ...allowed };
     this.schedulePersist();
@@ -175,7 +207,13 @@ class UsageStore {
   }
 
   recordSample(sample, seconds, isLaunch = false, date = new Date()) {
-    if (!sample?.id || !sample?.name || !Number.isFinite(seconds) || seconds <= 0) return;
+    if (
+      !sample?.id ||
+      !sample?.name ||
+      !Number.isFinite(seconds) ||
+      seconds <= 0
+    )
+      return;
     const dayKey = localDay(date);
     const hour = String(date.getHours());
     const day = (this.data.usageByDay[dayKey] ||= {});
@@ -191,9 +229,11 @@ class UsageStore {
       lastSeenAt: null,
     });
     entry.name = sample.name;
-    if (typeof sample.executablePath === 'string'
-      && sample.executablePath.length <= 4096
-      && path.isAbsolute(sample.executablePath)) {
+    if (
+      typeof sample.executablePath === 'string' &&
+      sample.executablePath.length <= 4096 &&
+      path.isAbsolute(sample.executablePath)
+    ) {
       entry.executablePath = sample.executablePath;
     }
     entry.lastTitle = sample.title || entry.lastTitle;
@@ -206,17 +246,31 @@ class UsageStore {
       ? normalizeSiteDomain(sample.site?.domain)
       : null;
     if (domain) {
-      if (!entry.sites || typeof entry.sites !== 'object' || Array.isArray(entry.sites)) entry.sites = {};
-      const existingSite = Object.prototype.hasOwnProperty.call(entry.sites, domain)
+      if (
+        !entry.sites ||
+        typeof entry.sites !== 'object' ||
+        Array.isArray(entry.sites)
+      )
+        entry.sites = {};
+      const existingSite = Object.prototype.hasOwnProperty.call(
+        entry.sites,
+        domain,
+      )
         ? entry.sites[domain]
         : null;
-      const site = existingSite && typeof existingSite === 'object' ? existingSite : {
-        domain,
-        seconds: 0,
-        lastSeenAt: null,
-      };
+      const site =
+        existingSite && typeof existingSite === 'object'
+          ? existingSite
+          : {
+              domain,
+              seconds: 0,
+              lastSeenAt: null,
+            };
       site.domain = domain;
-      site.seconds = Math.max(0, (Number.isFinite(site.seconds) ? site.seconds : 0) + seconds);
+      site.seconds = Math.max(
+        0,
+        (Number.isFinite(site.seconds) ? site.seconds : 0) + seconds,
+      );
       site.lastSeenAt = date.toISOString();
       Object.defineProperty(entry.sites, domain, {
         configurable: true,
@@ -237,7 +291,10 @@ class UsageStore {
     for (const day of Object.values(this.data.usageByDay)) {
       for (const entry of Object.values(day)) {
         const previous = apps.get(entry.id);
-        if (!previous || (entry.lastSeenAt || '') > (previous.lastSeenAt || '')) {
+        if (
+          !previous ||
+          (entry.lastSeenAt || '') > (previous.lastSeenAt || '')
+        ) {
           apps.set(entry.id, {
             id: entry.id,
             name: entry.name,
@@ -257,7 +314,9 @@ class UsageStore {
         });
       }
     }
-    return [...apps.values()].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+    return [...apps.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'uk'),
+    );
   }
 
   getAppIconSource(appId) {
@@ -276,11 +335,13 @@ class UsageStore {
         name = entry.name;
         nameLastSeenAt = lastSeenAt;
       }
-      if (typeof entry.executablePath === 'string'
-        && entry.executablePath
-        && entry.executablePath.length <= 4096
-        && path.isAbsolute(entry.executablePath)
-        && lastSeenAt >= pathLastSeenAt) {
+      if (
+        typeof entry.executablePath === 'string' &&
+        entry.executablePath &&
+        entry.executablePath.length <= 4096 &&
+        path.isAbsolute(entry.executablePath) &&
+        lastSeenAt >= pathLastSeenAt
+      ) {
         executablePath = entry.executablePath;
         pathLastSeenAt = lastSeenAt;
       }
@@ -295,9 +356,14 @@ class UsageStore {
 
   saveLimit(input) {
     if (!input?.appId || !input?.appName) throw new Error('Оберіть застосунок');
-    if (String(input.appId).length > 512 || String(input.appName).length > 120) throw new Error('Некоректні дані застосунку');
+    if (String(input.appId).length > 512 || String(input.appName).length > 120)
+      throw new Error('Некоректні дані застосунку');
     const dailyLimitMinutes = Math.round(Number(input.dailyLimitMinutes));
-    if (!Number.isFinite(dailyLimitMinutes) || dailyLimitMinutes < 1 || dailyLimitMinutes > 1440) {
+    if (
+      !Number.isFinite(dailyLimitMinutes) ||
+      dailyLimitMinutes < 1 ||
+      dailyLimitMinutes > 1440
+    ) {
       throw new Error('Ліміт має бути від 1 хвилини до 24 годин');
     }
     const warningMinutes = Math.min(
@@ -305,7 +371,9 @@ class UsageStore {
       Math.max(0, dailyLimitMinutes - 1),
     );
     const previous = this.data.limits[input.appId] || {};
-    const thresholdChanged = previous.dailyLimitMinutes !== undefined && previous.dailyLimitMinutes !== dailyLimitMinutes;
+    const thresholdChanged =
+      previous.dailyLimitMinutes !== undefined &&
+      previous.dailyLimitMinutes !== dailyLimitMinutes;
     const limit = {
       ...previous,
       appId: input.appId,
@@ -313,8 +381,12 @@ class UsageStore {
       dailyLimitMinutes,
       warningMinutes,
       enabled: input.enabled !== false,
-      lastWarningDate: thresholdChanged ? null : previous.lastWarningDate || null,
-      lastReachedDate: thresholdChanged ? null : previous.lastReachedDate || null,
+      lastWarningDate: thresholdChanged
+        ? null
+        : previous.lastWarningDate || null,
+      lastReachedDate: thresholdChanged
+        ? null
+        : previous.lastReachedDate || null,
       pausedDate: previous.pausedDate || null,
     };
     this.data.limits[input.appId] = limit;
@@ -351,7 +423,10 @@ class UsageStore {
   aggregate(from, to) {
     const days = enumerateDays(from, to);
     const appMap = new Map();
-    const hourly = Array.from({ length: 24 }, (_, hour) => ({ key: String(hour), seconds: 0 }));
+    const hourly = Array.from({ length: 24 }, (_, hour) => ({
+      key: String(hour),
+      seconds: 0,
+    }));
     const daily = [];
 
     for (const dayKey of days) {
@@ -377,15 +452,27 @@ class UsageStore {
           aggregate.lastSeenAt = entry.lastSeenAt;
           aggregate.lastTitle = entry.lastTitle || aggregate.lastTitle;
         }
-        if (entry.sites && typeof entry.sites === 'object' && !Array.isArray(entry.sites)) {
+        if (
+          entry.sites &&
+          typeof entry.sites === 'object' &&
+          !Array.isArray(entry.sites)
+        ) {
           for (const siteEntry of Object.values(entry.sites)) {
             if (!siteEntry || typeof siteEntry !== 'object') continue;
             const domain = normalizeSiteDomain(siteEntry.domain);
-            const siteSeconds = Number.isFinite(siteEntry.seconds) ? Math.max(0, siteEntry.seconds) : 0;
+            const siteSeconds = Number.isFinite(siteEntry.seconds)
+              ? Math.max(0, siteEntry.seconds)
+              : 0;
             if (!domain || siteSeconds <= 0) continue;
-            const siteAggregate = aggregate.sites.get(domain) || { domain, seconds: 0, lastSeenAt: null };
+            const siteAggregate = aggregate.sites.get(domain) || {
+              domain,
+              seconds: 0,
+              lastSeenAt: null,
+            };
             siteAggregate.seconds += siteSeconds;
-            if ((siteEntry.lastSeenAt || '') > (siteAggregate.lastSeenAt || '')) {
+            if (
+              (siteEntry.lastSeenAt || '') > (siteAggregate.lastSeenAt || '')
+            ) {
               siteAggregate.lastSeenAt = siteEntry.lastSeenAt;
             }
             aggregate.sites.set(domain, siteAggregate);
@@ -394,7 +481,8 @@ class UsageStore {
         appMap.set(entry.id, aggregate);
         daySeconds += entry.seconds || 0;
         for (const [hour, seconds] of Object.entries(entry.hourly || {})) {
-          if (hourly[Number(hour)]) hourly[Number(hour)].seconds += seconds || 0;
+          if (hourly[Number(hour)])
+            hourly[Number(hour)].seconds += seconds || 0;
         }
       }
       daily.push({ key: dayKey, seconds: daySeconds });
@@ -404,7 +492,9 @@ class UsageStore {
       .map((entry) => {
         const limit = this.data.limits[entry.id];
         const sites = [...entry.sites.values()]
-          .sort((a, b) => b.seconds - a.seconds || a.domain.localeCompare(b.domain))
+          .sort(
+            (a, b) => b.seconds - a.seconds || a.domain.localeCompare(b.domain),
+          )
           .map(({ domain, seconds }) => ({ domain, seconds }));
         const { sites: _siteMap, ...app } = entry;
         return {
@@ -428,7 +518,10 @@ class UsageStore {
     const dayCount = current.days.length;
     const previousTo = addDays(from, -1);
     const previousFrom = addDays(previousTo, -(dayCount - 1));
-    const previousTotalSeconds = this.aggregate(previousFrom, previousTo).totalSeconds;
+    const previousTotalSeconds = this.aggregate(
+      previousFrom,
+      previousTo,
+    ).totalSeconds;
     return {
       ...current,
       previousTotalSeconds,
@@ -437,7 +530,9 @@ class UsageStore {
       settings: this.getSettings(),
       storage: this.getStorageStatus(),
       today,
-      todayUsage: Object.fromEntries(todayAggregate.apps.map((entry) => [entry.id, entry.seconds])),
+      todayUsage: Object.fromEntries(
+        todayAggregate.apps.map((entry) => [entry.id, entry.seconds]),
+      ),
       updatedAt: new Date().toISOString(),
     };
   }
