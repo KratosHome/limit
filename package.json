@@ -13,6 +13,7 @@
     "start": "electron .",
     "test": "node --test electron/*.test.cjs",
     "package": "npm run build && electron-builder --dir",
+    "sign:mac:local": "node scripts/sign-macos-local.cjs",
     "dist": "npm run build && electron-builder"
   },
   "build": {
@@ -37,7 +38,13 @@
       "node_modules/get-windows/lib/**/*"
     ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "Limit читає лише домен активної вкладки, коли ввімкнено відстеження сайтів."
+      }
     },
     "win": {
       "target": "nsis"

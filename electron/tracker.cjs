@@ -1,12 +1,40 @@
 const { EventEmitter } = require('node:events');
+const { URL } = require('node:url');
 const { loadActiveWindowProvider } = require('./active-app-provider.cjs');
 
+function siteFromUrl(value) {
+  if (typeof value !== 'string' || !value) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    const domain = parsed.hostname
+      .toLowerCase()
+      .replace(/\.$/, '')
+      .replace(/^www\./, '');
+    return domain ? { domain } : null;
+  } catch {
+    return null;
+  }
+}
+
+function websitePermissionState(error) {
+  if (!error) return 'granted';
+  return /permission|accessibility|automation|not authorized|-1743/i.test(error) ? 'denied' : 'error';
+}
+
+function isSupportedBrowserWindow(windowInfo) {
+  const bundleId = String(windowInfo?.owner?.bundleId || '').toLowerCase();
+  if (bundleId === 'company.thebrowser.browser' || bundleId === 'com.apple.safari' || bundleId === 'com.apple.safaritechnologypreview') return true;
+  return /^(com\.google\.chrome|com\.brave\.browser|com\.microsoft\.edgemac|com\.operasoftware\.opera|com\.vivaldi\.vivaldi)/.test(bundleId);
+}
+
 class ActivityTracker extends EventEmitter {
-  constructor({ store, getIdleSeconds = () => 0, getSystemState = null, ownProcessId, intervalMs = 5000, activeWindowProvider = null }) {
+  constructor({ store, getIdleSeconds = () => 0, getSystemState = null, hasAccessibilityPermission = null, ownProcessId, intervalMs = 5000, activeWindowProvider = null }) {
     super();
     this.store = store;
     this.getIdleSeconds = getIdleSeconds;
     this.getSystemState = getSystemState || ((threshold) => this.getIdleSeconds() >= threshold ? 'idle' : 'active');
+    this.hasAccessibilityPermission = typeof hasAccessibilityPermission === 'function' ? hasAccessibilityPermission : null;
     this.ownProcessId = ownProcessId;
     this.intervalMs = intervalMs;
     this.timer = null;
@@ -17,6 +45,8 @@ class ActivityTracker extends EventEmitter {
     this.currentApp = null;
     this.permissionState = 'unknown';
     this.lastError = null;
+    this.websitePermissionState = 'disabled';
+    this.lastWebsiteError = null;
     this.activeWin = activeWindowProvider;
     this.ticking = false;
     this.generation = 0;
@@ -52,6 +82,8 @@ class ActivityTracker extends EventEmitter {
       currentApp: this.currentApp,
       permissionState: this.permissionState,
       lastError: this.lastError,
+      websitePermissionState: this.websitePermissionState,
+      lastWebsiteError: this.lastWebsiteError,
       running: Boolean(this.timer),
     };
   }
@@ -77,8 +109,32 @@ class ActivityTracker extends EventEmitter {
       }
 
       const activeWin = await this.loadProvider();
-      const windowInfo = await activeWin();
+      const websiteTrackingEnabled = settings.websiteTrackingEnabled === true;
+      if (websiteTrackingEnabled && this.websitePermissionState === 'disabled') this.websitePermissionState = 'pending';
+      const accessibilityBlocked = websiteTrackingEnabled
+        && this.hasAccessibilityPermission
+        && !this.hasAccessibilityPermission();
+      const windowInfo = await activeWin({ websiteTrackingEnabled: websiteTrackingEnabled && !accessibilityBlocked });
       if (generation !== this.generation) return;
+      if (websiteTrackingEnabled) {
+        this.lastWebsiteError = accessibilityBlocked
+          ? 'accessibility-permission'
+          : windowInfo?.websiteTrackingError || null;
+        if (accessibilityBlocked) {
+          this.websitePermissionState = 'denied';
+        } else if (this.lastWebsiteError) {
+          this.websitePermissionState = websitePermissionState(this.lastWebsiteError);
+        } else if (isSupportedBrowserWindow(windowInfo)) {
+          if (typeof windowInfo.url === 'string' && windowInfo.url.trim()) {
+            this.websitePermissionState = 'granted';
+          } else if (this.websitePermissionState !== 'granted') {
+            this.websitePermissionState = 'unavailable';
+          }
+        }
+      } else {
+        this.lastWebsiteError = null;
+        this.websitePermissionState = 'disabled';
+      }
       if (!windowInfo?.owner?.name || windowInfo.owner.processId === this.ownProcessId) {
         this.lastAppId = null;
         this.lastSample = null;
@@ -92,6 +148,7 @@ class ActivityTracker extends EventEmitter {
         id,
         name: windowInfo.owner.name,
         title: '',
+        site: websiteTrackingEnabled ? siteFromUrl(windowInfo.url) : null,
       };
       const isLaunch = this.lastAppId !== id;
       if (this.lastSample && elapsed > 0) {
@@ -121,4 +178,4 @@ class ActivityTracker extends EventEmitter {
   }
 }
 
-module.exports = { ActivityTracker };
+module.exports = { ActivityTracker, isSupportedBrowserWindow, siteFromUrl, websitePermissionState };

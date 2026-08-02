@@ -2,11 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DEFAULT_DATA = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   usageByDay: {},
   limits: {},
   settings: {
     trackingEnabled: true,
+    websiteTrackingEnabled: false,
     launchAtLogin: false,
     idleThresholdSeconds: 60,
   },
@@ -34,15 +35,33 @@ function guessCategory(appName = '') {
   return 'Інше';
 }
 
+function normalizeSiteDomain(value) {
+  if (typeof value !== 'string') return null;
+  let domain = value.trim().toLowerCase();
+  if (domain.endsWith('.')) domain = domain.slice(0, -1);
+  if (domain.startsWith('www.')) domain = domain.slice(4);
+  if (!domain || domain.length > 253 || /[\s\\/:?#@]/.test(domain)) return null;
+
+  const labels = domain.split('.');
+  if (labels.some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
+  return domain;
+}
+
 function normalizeData(value) {
   const fallback = cloneDefaultData();
   if (!value || typeof value !== 'object') return fallback;
+  const settings = value.settings && typeof value.settings === 'object' ? value.settings : {};
   return {
     ...fallback,
     ...value,
+    schemaVersion: Math.max(DEFAULT_DATA.schemaVersion, Number.isInteger(value.schemaVersion) ? value.schemaVersion : 1),
     usageByDay: value.usageByDay && typeof value.usageByDay === 'object' ? value.usageByDay : {},
     limits: value.limits && typeof value.limits === 'object' ? value.limits : {},
-    settings: { ...fallback.settings, ...(value.settings || {}) },
+    settings: {
+      ...fallback.settings,
+      ...settings,
+      websiteTrackingEnabled: settings.websiteTrackingEnabled === true,
+    },
   };
 }
 
@@ -145,6 +164,7 @@ class UsageStore {
   updateSettings(patch) {
     const allowed = {};
     if (typeof patch.trackingEnabled === 'boolean') allowed.trackingEnabled = patch.trackingEnabled;
+    if (typeof patch.websiteTrackingEnabled === 'boolean') allowed.websiteTrackingEnabled = patch.websiteTrackingEnabled;
     if (typeof patch.launchAtLogin === 'boolean') allowed.launchAtLogin = patch.launchAtLogin;
     if (Number.isFinite(patch.idleThresholdSeconds)) {
       allowed.idleThresholdSeconds = Math.min(3600, Math.max(15, Math.round(patch.idleThresholdSeconds)));
@@ -166,6 +186,7 @@ class UsageStore {
       seconds: 0,
       launches: 0,
       hourly: {},
+      sites: {},
       lastTitle: '',
       lastSeenAt: null,
     });
@@ -175,6 +196,30 @@ class UsageStore {
     entry.seconds = Math.max(0, entry.seconds + seconds);
     entry.hourly[hour] = Math.max(0, (entry.hourly[hour] || 0) + seconds);
     if (isLaunch) entry.launches += 1;
+
+    const domain = this.data.settings.websiteTrackingEnabled
+      ? normalizeSiteDomain(sample.site?.domain)
+      : null;
+    if (domain) {
+      if (!entry.sites || typeof entry.sites !== 'object' || Array.isArray(entry.sites)) entry.sites = {};
+      const existingSite = Object.prototype.hasOwnProperty.call(entry.sites, domain)
+        ? entry.sites[domain]
+        : null;
+      const site = existingSite && typeof existingSite === 'object' ? existingSite : {
+        domain,
+        seconds: 0,
+        lastSeenAt: null,
+      };
+      site.domain = domain;
+      site.seconds = Math.max(0, (Number.isFinite(site.seconds) ? site.seconds : 0) + seconds);
+      site.lastSeenAt = date.toISOString();
+      Object.defineProperty(entry.sites, domain, {
+        configurable: true,
+        enumerable: true,
+        value: site,
+        writable: true,
+      });
+    }
     this.schedulePersist();
   }
 
@@ -276,20 +321,38 @@ class UsageStore {
       let daySeconds = 0;
       const entries = this.data.usageByDay[dayKey] || {};
       for (const entry of Object.values(entries)) {
+        const category = entry.category || guessCategory(entry.name);
         const aggregate = appMap.get(entry.id) || {
           id: entry.id,
           name: entry.name,
-          category: entry.category || guessCategory(entry.name),
+          category,
           seconds: 0,
           launches: 0,
           lastTitle: entry.lastTitle || '',
           lastSeenAt: entry.lastSeenAt || null,
+          isBrowser: category === 'Браузер',
+          sites: new Map(),
         };
+        if (category === 'Браузер') aggregate.isBrowser = true;
         aggregate.seconds += entry.seconds || 0;
         aggregate.launches += entry.launches || 0;
         if ((entry.lastSeenAt || '') > (aggregate.lastSeenAt || '')) {
           aggregate.lastSeenAt = entry.lastSeenAt;
           aggregate.lastTitle = entry.lastTitle || aggregate.lastTitle;
+        }
+        if (entry.sites && typeof entry.sites === 'object' && !Array.isArray(entry.sites)) {
+          for (const siteEntry of Object.values(entry.sites)) {
+            if (!siteEntry || typeof siteEntry !== 'object') continue;
+            const domain = normalizeSiteDomain(siteEntry.domain);
+            const siteSeconds = Number.isFinite(siteEntry.seconds) ? Math.max(0, siteEntry.seconds) : 0;
+            if (!domain || siteSeconds <= 0) continue;
+            const siteAggregate = aggregate.sites.get(domain) || { domain, seconds: 0, lastSeenAt: null };
+            siteAggregate.seconds += siteSeconds;
+            if ((siteEntry.lastSeenAt || '') > (siteAggregate.lastSeenAt || '')) {
+              siteAggregate.lastSeenAt = siteEntry.lastSeenAt;
+            }
+            aggregate.sites.set(domain, siteAggregate);
+          }
         }
         appMap.set(entry.id, aggregate);
         daySeconds += entry.seconds || 0;
@@ -303,8 +366,13 @@ class UsageStore {
     const apps = [...appMap.values()]
       .map((entry) => {
         const limit = this.data.limits[entry.id];
+        const sites = [...entry.sites.values()]
+          .sort((a, b) => b.seconds - a.seconds || a.domain.localeCompare(b.domain))
+          .map(({ domain, seconds }) => ({ domain, seconds }));
+        const { sites: _siteMap, ...app } = entry;
         return {
-          ...entry,
+          ...app,
+          sites,
           limitMinutes: limit?.dailyLimitMinutes ?? null,
           limitEnabled: limit?.enabled ?? false,
         };

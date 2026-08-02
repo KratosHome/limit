@@ -8,8 +8,10 @@ const {
   Notification,
   powerMonitor,
   shell,
+  systemPreferences,
   Tray,
 } = require('electron');
+const { createAccessibilityPermissionController } = require('./accessibility-permission.cjs');
 const { UsageStore, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 
@@ -18,6 +20,7 @@ let tray = null;
 let isQuitting = false;
 let store = null;
 let tracker = null;
+let accessibilityPermission = null;
 let updateTimer = null;
 let screenLocked = false;
 let suspended = false;
@@ -218,7 +221,7 @@ function handleIpc(channel, handler) {
 function registerIpc() {
   handleIpc('dashboard:get', (range) => {
     const { from, to } = validateRange(range);
-    return { ...store.getDashboard(from, to), tracker: tracker.getStatus(), platform: process.platform };
+    return { ...store.getDashboard(from, to), tracker: tracker.getStatus(), platform: process.platform, isPackaged: app.isPackaged };
   });
   handleIpc('tracker:status', () => tracker.getStatus());
   handleIpc('tracker:set-enabled', (enabled) => {
@@ -228,7 +231,11 @@ function registerIpc() {
     return settings;
   });
   handleIpc('settings:update', (patch) => {
+    const previousSettings = store.getSettings();
     const settings = store.updateSettings(patch || {});
+    if (process.platform === 'darwin' && patch?.websiteTrackingEnabled === true && !previousSettings.websiteTrackingEnabled) {
+      accessibilityPermission?.requestOnce();
+    }
     if (typeof patch?.launchAtLogin === 'boolean' && app.isPackaged) {
       app.setLoginItemSettings({ openAtLogin: patch.launchAtLogin });
     }
@@ -251,9 +258,11 @@ function registerIpc() {
     broadcastUpdate({ reason: 'limit' });
     return limit;
   });
-  handleIpc('permissions:open', async () => {
+  handleIpc('permissions:open', async (kind) => {
     if (process.platform === 'darwin') {
-      await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+      if (kind === 'accessibility') accessibilityPermission?.requestOnce();
+      const section = kind === 'automation' ? 'Privacy_Automation' : 'Privacy_Accessibility';
+      await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${section}`);
       return true;
     }
     return false;
@@ -262,9 +271,14 @@ function registerIpc() {
 
 if (hasSingleInstanceLock) app.whenReady().then(() => {
   store = new UsageStore(path.join(app.getPath('userData'), 'usage-data.json'));
+  accessibilityPermission = createAccessibilityPermissionController({
+    platform: process.platform,
+    isTrustedAccessibilityClient: (prompt) => systemPreferences.isTrustedAccessibilityClient(prompt),
+  });
   tracker = new ActivityTracker({
     store,
     getSystemState: (threshold) => powerMonitor.getSystemIdleState(threshold),
+    hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
     ownProcessId: process.pid,
     intervalMs: 2000,
   });

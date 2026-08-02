@@ -6,6 +6,15 @@ const { pathToFileURL } = require('node:url');
 
 const execFile = promisify(childProcess.execFile);
 
+function websiteTrackingErrorKind(error) {
+  const details = [error?.message, error?.stderr, error?.stdout]
+    .filter((value) => typeof value === 'string')
+    .join('\n');
+  if (/accessibility|ax is not trusted/i.test(details)) return 'accessibility-permission';
+  if (/automation|not authorized|-1743/i.test(details)) return 'automation-permission';
+  return 'url-provider-error';
+}
+
 function packageDirectory() {
   return path.dirname(require.resolve('get-windows'));
 }
@@ -31,17 +40,34 @@ function findWindowsBinding(directory) {
   return null;
 }
 
-async function loadActiveWindowProvider(platform = process.platform) {
+async function loadActiveWindowProvider(platform = process.platform, { execute = execFile } = {}) {
   const root = packageDirectory();
 
   if (platform === 'darwin') {
     const binary = unpackedPath(path.join(root, 'main'));
-    return async () => {
-      const { stdout } = await execFile(binary, [
-        '--no-accessibility-permission',
-        '--no-screen-recording-permission',
-      ]);
-      return JSON.parse(stdout);
+    const appOnlyArguments = [
+      '--no-accessibility-permission',
+      '--no-screen-recording-permission',
+    ];
+    return async ({ websiteTrackingEnabled = false } = {}) => {
+      const arguments_ = websiteTrackingEnabled
+        ? ['--no-screen-recording-permission']
+        : appOnlyArguments;
+
+      try {
+        const { stdout } = await execute(binary, arguments_);
+        return JSON.parse(stdout);
+      } catch (error) {
+        if (!websiteTrackingEnabled) throw error;
+
+        // URL lookup needs macOS Accessibility/Automation access. If it is
+        // unavailable, retain foreground-app tracking without requesting URLs.
+        const { stdout } = await execute(binary, appOnlyArguments);
+        return {
+          ...JSON.parse(stdout),
+          websiteTrackingError: websiteTrackingErrorKind(error),
+        };
+      }
     };
   }
 
@@ -72,4 +98,5 @@ async function loadActiveWindowProvider(platform = process.platform) {
 module.exports = {
   loadActiveWindowProvider,
   unpackedPath,
+  websiteTrackingErrorKind,
 };

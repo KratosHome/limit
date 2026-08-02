@@ -24,7 +24,8 @@ export function LimitApp() {
             onEditLimit={(limit) => app.setModal(limit ? { existing: limit } : {})}
             onOpenActivity={() => app.setView('activity')}
             onOpenLimits={() => app.setView('limits')}
-            onOpenPermissions={() => void limitApi.openPermissions()}
+            onOpenPermissions={(kind) => void limitApi.openPermissions(kind)}
+            onOpenSettings={() => app.setView('settings')}
             onPauseLimit={(appId) => void app.pauseLimit(appId)}
             onSetLimit={app.openLimitForApp}
             onSettingsChange={(patch) => void app.updateSettings(patch)}

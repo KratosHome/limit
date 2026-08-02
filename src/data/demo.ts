@@ -2,20 +2,38 @@ import type { AppLimit, AppUsage, DashboardData, DateRange, KnownApp, LimitApi, 
 import { toDayKey } from '../lib/format';
 
 const baseApps: AppUsage[] = [
-  { id: 'com.google.Chrome', name: 'Google Chrome', category: 'Браузер', seconds: 9_480, launches: 14, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: 180, limitEnabled: true },
-  { id: 'com.tinyspeck.slackmacgap', name: 'Slack', category: 'Спілкування', seconds: 5_220, launches: 9, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: null, limitEnabled: false },
-  { id: 'com.microsoft.VSCode', name: 'Visual Studio Code', category: 'Розробка', seconds: 4_320, launches: 5, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: 120, limitEnabled: true },
-  { id: 'ru.keepcoder.Telegram', name: 'Telegram', category: 'Спілкування', seconds: 2_460, launches: 18, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: 60, limitEnabled: true },
-  { id: 'com.spotify.client', name: 'Spotify', category: 'Розваги', seconds: 1_680, launches: 2, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: null, limitEnabled: false },
+  {
+    id: 'company.thebrowser.Browser',
+    name: 'Arc',
+    category: 'Браузер',
+    seconds: 9_480,
+    launches: 14,
+    lastTitle: '',
+    lastSeenAt: new Date().toISOString(),
+    limitMinutes: 180,
+    limitEnabled: true,
+    isBrowser: true,
+    sites: [
+      { domain: 'chatgpt.com', seconds: 3_180 },
+      { domain: 'github.com', seconds: 2_460 },
+      { domain: 'developer.mozilla.org', seconds: 1_680 },
+      { domain: 'linear.app', seconds: 1_260 },
+      { domain: 'google.com', seconds: 900 },
+    ],
+  },
+  { id: 'com.tinyspeck.slackmacgap', name: 'Slack', category: 'Спілкування', seconds: 5_220, launches: 9, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: null, limitEnabled: false, isBrowser: false, sites: [] },
+  { id: 'com.microsoft.VSCode', name: 'Visual Studio Code', category: 'Розробка', seconds: 4_320, launches: 5, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: 120, limitEnabled: true, isBrowser: false, sites: [] },
+  { id: 'ru.keepcoder.Telegram', name: 'Telegram', category: 'Спілкування', seconds: 2_460, launches: 18, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: 60, limitEnabled: true, isBrowser: false, sites: [] },
+  { id: 'com.spotify.client', name: 'Spotify', category: 'Розваги', seconds: 1_680, launches: 2, lastTitle: '', lastSeenAt: new Date().toISOString(), limitMinutes: null, limitEnabled: false, isBrowser: false, sites: [] },
 ];
 
 let mockLimits: AppLimit[] = [
-  { appId: 'com.google.Chrome', appName: 'Google Chrome', dailyLimitMinutes: 180, warningMinutes: 10, enabled: true, lastWarningDate: null, lastReachedDate: null, pausedDate: null },
+  { appId: 'company.thebrowser.Browser', appName: 'Arc', dailyLimitMinutes: 180, warningMinutes: 10, enabled: true, lastWarningDate: null, lastReachedDate: null, pausedDate: null },
   { appId: 'com.microsoft.VSCode', appName: 'Visual Studio Code', dailyLimitMinutes: 120, warningMinutes: 10, enabled: true, lastWarningDate: null, lastReachedDate: null, pausedDate: null },
   { appId: 'ru.keepcoder.Telegram', appName: 'Telegram', dailyLimitMinutes: 60, warningMinutes: 10, enabled: true, lastWarningDate: null, lastReachedDate: null, pausedDate: null },
 ];
 
-let mockSettings: Settings = { trackingEnabled: true, launchAtLogin: false, idleThresholdSeconds: 60 };
+let mockSettings: Settings = { trackingEnabled: true, websiteTrackingEnabled: true, launchAtLogin: false, idleThresholdSeconds: 60 };
 
 function makeTimeline(range: DateRange) {
   if (range.from === range.to) {
@@ -41,6 +59,7 @@ function dashboard(range: DateRange): DashboardData {
     return {
       ...app,
       seconds: Math.round(app.seconds * multiplier),
+      sites: app.sites.map((site) => ({ ...site, seconds: Math.round(site.seconds * multiplier) })),
       launches: Math.round(app.launches * Math.max(1, multiplier * 0.7)),
       limitMinutes: limit?.dailyLimitMinutes ?? null,
       limitEnabled: limit?.enabled ?? false,
@@ -56,9 +75,10 @@ function dashboard(range: DateRange): DashboardData {
     limits: [...mockLimits],
     knownApps,
     settings: { ...mockSettings },
-    tracker: { currentApp: { id: 'com.microsoft.VSCode', name: 'Visual Studio Code', title: '' }, permissionState: 'granted', lastError: null, running: true },
+    tracker: { currentApp: { id: 'com.microsoft.VSCode', name: 'Visual Studio Code', title: '' }, permissionState: 'granted', lastError: null, websitePermissionState: 'granted', lastWebsiteError: null, running: true },
     storage: { error: null, recoveryCreated: false },
     platform: 'browser-demo',
+    isPackaged: true,
     today: toDayKey(new Date()),
     todayUsage: Object.fromEntries(baseApps.map((app) => [app.id, app.seconds])),
     updatedAt: new Date().toISOString(),

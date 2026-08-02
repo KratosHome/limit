@@ -1,5 +1,11 @@
 export type ViewKey = 'overview' | 'activity' | 'limits' | 'settings';
 export type PeriodKey = 'today' | 'yesterday' | '7days' | '30days' | 'custom';
+export type PermissionKind = 'accessibility' | 'automation';
+
+export interface SiteUsage {
+  domain: string;
+  seconds: number;
+}
 
 export interface AppUsage {
   id: string;
@@ -11,6 +17,8 @@ export interface AppUsage {
   lastSeenAt: string | null;
   limitMinutes: number | null;
   limitEnabled: boolean;
+  isBrowser: boolean;
+  sites: SiteUsage[];
 }
 
 export interface KnownApp {
@@ -33,14 +41,17 @@ export interface AppLimit {
 
 export interface Settings {
   trackingEnabled: boolean;
+  websiteTrackingEnabled: boolean;
   launchAtLogin: boolean;
   idleThresholdSeconds: number;
 }
 
 export interface TrackerStatus {
-  currentApp: { id: string; name: string; title: string } | null;
+  currentApp: { id: string; name: string; title: string; site?: { domain: string } | null } | null;
   permissionState: 'unknown' | 'granted' | 'denied' | 'unsupported' | 'error';
   lastError: string | null;
+  websitePermissionState: 'disabled' | 'pending' | 'granted' | 'unavailable' | 'denied' | 'error';
+  lastWebsiteError: string | null;
   running: boolean;
 }
 
@@ -61,6 +72,7 @@ export interface DashboardData {
   tracker: TrackerStatus;
   storage: { error: string | null; recoveryCreated: boolean };
   platform: string;
+  isPackaged: boolean;
   today: string;
   todayUsage: Record<string, number>;
   updatedAt: string;
@@ -95,7 +107,7 @@ export interface LimitApi {
   saveLimit(limit: LimitInput): Promise<AppLimit>;
   deleteLimit(appId: string): Promise<boolean>;
   pauseLimitToday(appId: string): Promise<AppLimit | null>;
-  openPermissions(): Promise<boolean>;
+  openPermissions(kind?: PermissionKind): Promise<boolean>;
   onDataUpdated(callback: (payload: { reason?: string }) => void): () => void;
   onLimitNotification(callback: (payload: LimitNotification) => void): () => void;
 }
