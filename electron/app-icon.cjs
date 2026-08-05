@@ -70,8 +70,9 @@ function applicationPathFromName(
 ) {
   const name = safeApplicationName(appName);
   if (!name) return null;
+  const pathApi = platformPath('darwin');
   for (const root of roots) {
-    const candidate = path.join(root, `${name}.app`);
+    const candidate = pathApi.join(root, `${name}.app`);
     if (existsSync(candidate)) return candidate;
   }
   return null;
@@ -120,7 +121,7 @@ async function bundleIdFromApplicationPath(
       [
         '-c',
         'Print :CFBundleIdentifier',
-        path.join(applicationPath, 'Contents', 'Info.plist'),
+        platformPath('darwin').join(applicationPath, 'Contents', 'Info.plist'),
       ],
       { maxBuffer: 64 * 1024, timeout: 3000 },
     );

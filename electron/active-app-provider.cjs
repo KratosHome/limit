@@ -28,18 +28,53 @@ function unpackedPath(filePath) {
     : filePath;
 }
 
-function findWindowsBinding(directory) {
-  const entries = fs.readdirSync(directory, { withFileTypes: true });
-  for (const entry of entries) {
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      const nested = findWindowsBinding(target);
-      if (nested) return nested;
-    } else if (entry.name === 'node-get-windows.node') {
-      return target;
-    }
+function windowsBindingPriority(directoryName, platform, arch, napiVersion) {
+  const match = /^napi-(\d+)-([^-]+)-[^-]+-(.+)$/.exec(directoryName);
+  if (!match) return null;
+  const bindingNapiVersion = Number(match[1]);
+  const bindingPlatform = match[2];
+  const bindingArch = match[3];
+  if (
+    bindingPlatform !== platform ||
+    bindingArch !== arch ||
+    !Number.isInteger(bindingNapiVersion) ||
+    bindingNapiVersion > napiVersion
+  ) {
+    return null;
   }
-  return null;
+  return bindingNapiVersion;
+}
+
+function findWindowsBinding(
+  directory,
+  {
+    platform = process.platform,
+    arch = process.arch,
+    napiVersion = Number(process.versions.napi || 0),
+  } = {},
+) {
+  const candidates = fs
+    .readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const priority = windowsBindingPriority(
+        entry.name,
+        platform,
+        arch,
+        napiVersion,
+      );
+      if (priority === null) return null;
+      const bindingPath = path.join(
+        directory,
+        entry.name,
+        'node-get-windows.node',
+      );
+      return fs.existsSync(bindingPath) ? { bindingPath, priority } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.priority - left.priority);
+
+  return candidates[0]?.bindingPath || null;
 }
 
 async function loadActiveWindowProvider(
@@ -105,7 +140,9 @@ async function loadActiveWindowProvider(
 }
 
 module.exports = {
+  findWindowsBinding,
   loadActiveWindowProvider,
   unpackedPath,
   websiteTrackingErrorKind,
+  windowsBindingPriority,
 };
