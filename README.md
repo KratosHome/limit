@@ -16,7 +16,14 @@ Limit — локальний desktop-трекер активного часу д
 - світла й темна тема;
 - автозапуск після пакування застосунку.
 
-Усі дані зберігаються локально у `app.getPath('userData')/usage-data.json`. За замовчуванням Limit не читає адреси сайтів. Якщо користувач окремо вмикає «Відстеження сайтів», застосунок зберігає лише hostname (наприклад, `youtube.com`) — без повного URL, шляху, пошукових параметрів, заголовків сторінок або вмісту.
+Усі дані зберігаються локально у SQLite-базі
+`app.getPath('userData')/usage-data.sqlite3`. Під час першого запуску після
+оновлення Limit одноразово імпортує наявний `usage-data.json`; старий JSON
+залишається поруч як резервна копія. Схема оновлюється versioned migrations, а
+на macOS/Linux файли бази, WAL і SHM отримують права `0600`. За замовчуванням
+Limit не читає адреси сайтів. Якщо користувач окремо вмикає «Відстеження
+сайтів», застосунок зберігає лише hostname (наприклад, `youtube.com`) — без
+повного URL, шляху, пошукових параметрів, заголовків сторінок або вмісту.
 
 ## Запуск
 
@@ -55,7 +62,8 @@ npm run dist      # інсталятор/образ для поточної ОС
 - `electron/main.cjs` — lifecycle Electron, tray, IPC, notifications і limit engine;
 - `electron/preload.cjs` — вузький API через `contextBridge`;
 - `electron/tracker.cjs` — polling активного застосунку та idle/sleep handling;
-- `electron/store.cjs` — атомарне локальне збереження й агрегація;
+- `electron/store.cjs` — правила запису статистики, ліміти й агрегація;
+- `electron/sqlite-storage.cjs` — SQLite-схема, транзакції, recovery та міграція JSON;
 - `src/` — React + TypeScript + Tailwind renderer.
 
 Renderer працює з `contextIsolation: true`, `nodeIntegration: false` і `sandbox: true`. Він не отримує прямого доступу до Node.js або файлової системи.
@@ -71,7 +79,7 @@ Renderer працює з `contextIsolation: true`, `nodeIntegration: false` і `
 
 ## Наступні кроки
 
-1. Перейти з агрегованого JSON на SQLite із raw usage segments і міграціями.
+1. Додати raw usage segments та outbox для майбутньої синхронізації.
 2. Додати одноразовий таймер, який спливає лише коли вибраний застосунок активний.
 3. Підписати macOS/Windows builds і додати CI smoke-тести на кожній ОС.
 4. Створити browser extension для добровільного кросплатформного обліку часу за доменами.

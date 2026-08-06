@@ -481,7 +481,10 @@ if (hasSingleInstanceLock)
   app.whenReady().then(() => {
     configureSessionSecurity();
     store = new UsageStore(
-      path.join(app.getPath('userData'), 'usage-data.json'),
+      path.join(app.getPath('userData'), 'usage-data.sqlite3'),
+      {
+        legacyJsonPath: path.join(app.getPath('userData'), 'usage-data.json'),
+      },
     );
     accessibilityPermission = createAccessibilityPermissionController({
       platform: process.platform,

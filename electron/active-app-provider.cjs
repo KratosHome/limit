@@ -22,10 +22,7 @@ function packageDirectory() {
 }
 
 function unpackedPath(filePath) {
-  const asarSegment = `${path.sep}app.asar${path.sep}`;
-  return filePath.includes(asarSegment)
-    ? filePath.replace(asarSegment, `${path.sep}app.asar.unpacked${path.sep}`)
-    : filePath;
+  return filePath.replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
 }
 
 function windowsBindingPriority(directoryName, platform, arch, napiVersion) {

@@ -1,20 +1,22 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { UsageStore } = require('./store.cjs');
 
-function createStore() {
-  return new UsageStore(
-    path.join(
-      os.tmpdir(),
-      `limit-store-test-${process.pid}-${Math.random()}.json`,
-    ),
-  );
+function createStore(t) {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const store = new UsageStore(path.join(directory, 'usage-data.sqlite3'));
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+  return store;
 }
 
-test('getAppIconSource keeps an older usable path while using the latest name', () => {
-  const store = createStore();
+test('getAppIconSource keeps an older usable path while using the latest name', (t) => {
+  const store = createStore(t);
   store.data.usageByDay = {
     '2026-08-01': {
       'com.example.App': {
@@ -42,8 +44,8 @@ test('getAppIconSource keeps an older usable path while using the latest name', 
   });
 });
 
-test('getAppIconSource marks a limit-only id as untracked', () => {
-  const store = createStore();
+test('getAppIconSource marks a limit-only id as untracked', (t) => {
+  const store = createStore(t);
   store.data.limits['/untrusted/path'] = {
     appId: '/untrusted/path',
     appName: 'Example',
@@ -57,8 +59,8 @@ test('getAppIconSource marks a limit-only id as untracked', () => {
   });
 });
 
-test('getKnownApps exposes only renderer-safe application metadata', () => {
-  const store = createStore();
+test('getKnownApps exposes only renderer-safe application metadata', (t) => {
+  const store = createStore(t);
   store.data.usageByDay = {
     '2026-08-02': {
       'com.example.App': {
@@ -85,8 +87,8 @@ test('getKnownApps exposes only renderer-safe application metadata', () => {
   ]);
 });
 
-test('aggregate exposes per-app usage for every hourly timeline point', () => {
-  const store = createStore();
+test('aggregate exposes per-app usage for every hourly timeline point', (t) => {
+  const store = createStore(t);
   store.data.usageByDay = {
     '2026-08-02': {
       'com.example.Editor': {
@@ -121,4 +123,222 @@ test('aggregate exposes per-app usage for every hourly timeline point', () => {
     seconds: 600,
     apps: [{ id: 'com.example.Editor', name: 'Editor', seconds: 600 }],
   });
+});
+
+test('SQLite persists settings, usage, sites, and limits across restarts', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const date = new Date(2026, 7, 5, 10, 30, 0);
+  const firstStore = new UsageStore(databasePath);
+  firstStore.updateSettings({ websiteTrackingEnabled: true });
+  firstStore.recordSample(
+    {
+      id: 'com.example.Browser',
+      name: 'Example Browser',
+      executablePath: '/Applications/Example Browser.app',
+      title: '',
+      site: { domain: 'example.com' },
+    },
+    125,
+    true,
+    date,
+  );
+  firstStore.saveLimit({
+    appId: 'com.example.Browser',
+    appName: 'Example Browser',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  firstStore.close();
+
+  const reopenedStore = new UsageStore(databasePath);
+  t.after(() => {
+    reopenedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(reopenedStore.getSettings().websiteTrackingEnabled, true);
+  assert.equal(reopenedStore.getTodayUsage('com.example.Browser', date), 125);
+  assert.deepEqual(
+    reopenedStore.aggregate('2026-08-05', '2026-08-05').apps[0].sites,
+    [{ domain: 'example.com', seconds: 125 }],
+  );
+  assert.equal(
+    reopenedStore.getLimit('com.example.Browser').dailyLimitMinutes,
+    30,
+  );
+  assert.equal(
+    reopenedStore.database.prepare('PRAGMA user_version').get().user_version,
+    1,
+  );
+  assert.deepEqual(
+    reopenedStore.database
+      .prepare('SELECT version, name FROM schema_migrations')
+      .all()
+      .map(({ version, name }) => ({ version, name })),
+    [{ version: 1, name: 'initial_schema' }],
+  );
+  assert.equal(
+    reopenedStore.database.prepare('PRAGMA foreign_key_check').all().length,
+    0,
+  );
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(databasePath).mode & 0o777, 0o600);
+  }
+});
+
+test('imports the legacy JSON once and keeps it as a backup', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const legacyJsonPath = path.join(directory, 'usage-data.json');
+  fs.writeFileSync(
+    legacyJsonPath,
+    JSON.stringify({
+      schemaVersion: 2,
+      usageByDay: {
+        '2026-08-04': {
+          'com.example.Editor': {
+            id: 'com.example.Editor',
+            name: 'Example Editor',
+            category: 'Розробка',
+            seconds: 600,
+            launches: 2,
+            hourly: { 9: 600 },
+            sites: {},
+            lastTitle: '',
+            lastSeenAt: '2026-08-04T09:10:00.000Z',
+          },
+        },
+      },
+      limits: {},
+      settings: {
+        trackingEnabled: false,
+        websiteTrackingEnabled: false,
+        launchAtLogin: true,
+        idleThresholdSeconds: 90,
+      },
+    }),
+  );
+
+  let store = new UsageStore(databasePath, { legacyJsonPath });
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(store.getSettings().trackingEnabled, false);
+  assert.equal(
+    store.getTodayUsage('com.example.Editor', new Date(2026, 7, 4)),
+    600,
+  );
+  assert.equal(fs.existsSync(legacyJsonPath), true);
+  assert.equal(
+    fs.readFileSync(databasePath).subarray(0, 15).toString(),
+    'SQLite format 3',
+  );
+
+  store.close();
+  fs.writeFileSync(
+    legacyJsonPath,
+    JSON.stringify({
+      schemaVersion: 2,
+      usageByDay: {},
+      limits: {},
+      settings: { trackingEnabled: true },
+    }),
+  );
+  store = new UsageStore(databasePath, { legacyJsonPath });
+  assert.equal(store.getSettings().trackingEnabled, false);
+  assert.equal(
+    store.getTodayUsage('com.example.Editor', new Date(2026, 7, 4)),
+    600,
+  );
+});
+
+test('parameterized writes treat SQL injection payloads as plain data', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const store = new UsageStore(databasePath);
+  const payload = "example'); DROP TABLE limits; --";
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  store.saveLimit({
+    appId: payload,
+    appName: payload,
+    dailyLimitMinutes: 45,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  store.recordSample(
+    { id: payload, name: payload, title: '', site: null },
+    10,
+    true,
+    new Date(2026, 7, 5, 12, 0, 0),
+  );
+
+  assert.equal(store.getLimit(payload).appName, payload);
+  assert.equal(
+    store.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'limits'",
+      )
+      .get().count,
+    1,
+  );
+  assert.equal(
+    store.database.prepare('PRAGMA integrity_check').get().integrity_check,
+    'ok',
+  );
+});
+
+test('refuses a newer schema without replacing the database', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const store = new UsageStore(databasePath);
+  store.database
+    .prepare(
+      `INSERT OR REPLACE INTO schema_migrations (version, name, applied_at)
+       VALUES (?, ?, ?)`,
+    )
+    .run(999, 'future_schema', new Date().toISOString());
+  store.close();
+  t.after(() => {
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.throws(() => new UsageStore(databasePath), /новішою версією Limit/);
+  assert.equal(fs.existsSync(databasePath), true);
+  assert.equal(
+    fs
+      .readdirSync(directory)
+      .some((fileName) => fileName.includes('.corrupt-')),
+    false,
+  );
+});
+
+test('backs up a corrupt database before creating a clean replacement', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  fs.writeFileSync(databasePath, 'not a sqlite database');
+  const store = new UsageStore(databasePath);
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(store.getStorageStatus().recoveryCreated, true);
+  assert.equal(
+    fs
+      .readdirSync(directory)
+      .some((fileName) => fileName.includes('.corrupt-')),
+    true,
+  );
+  assert.equal(
+    store.database.prepare('PRAGMA integrity_check').get().integrity_check,
+    'ok',
+  );
 });
