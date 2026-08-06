@@ -203,8 +203,7 @@ export function Settings({
   onSettingsChange,
   onOpenPermissions,
 }: SettingsProps) {
-  const websiteTrackingSupported =
-    data.platform === 'darwin' || data.platform === 'browser-demo';
+  const websiteTrackingSupported = data.platform === 'darwin';
   const appTrackingStatus = activityStatus(data);
   const siteTrackingStatus = websiteStatus(data);
 

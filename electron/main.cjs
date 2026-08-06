@@ -44,11 +44,14 @@ app.setPath(
     app.isPackaged ? 'Limit' : 'Limit Development',
   ),
 );
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
 if (!hasSingleInstanceLock) {
   isQuitting = true;
   app.quit();
 }
+
 if (process.platform === 'win32') app.setAppUserModelId('ua.limit.desktop');
 
 function showMainWindow() {
