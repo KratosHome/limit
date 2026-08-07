@@ -1,18 +1,23 @@
 import { CalendarRange, Moon, Pause, Play, Sun } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import { PeriodPicker } from '../components/period-picker';
+import { LanguageSelect } from '../components/language-select';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { offsetDay, toDayKey } from '../lib/format';
 import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
+import type { AppLanguage } from '../i18n';
 
 interface AppHeaderProps {
   customRange: DateRange;
+  language: AppLanguage;
   period: PeriodKey;
   theme: 'light' | 'dark';
   trackingEnabled?: boolean;
   view: ViewKey;
   onCustomRangeChange: Dispatch<SetStateAction<DateRange>>;
+  onLanguageChange: (language: AppLanguage) => void;
   onPeriodChange: (period: PeriodKey) => void;
   onThemeToggle: () => void;
   onTrackingToggle: () => void;
@@ -20,15 +25,18 @@ interface AppHeaderProps {
 
 export function AppHeader({
   customRange,
+  language,
   period,
   theme,
   trackingEnabled,
   view,
   onCustomRangeChange,
+  onLanguageChange,
   onPeriodChange,
   onThemeToggle,
   onTrackingToggle,
 }: AppHeaderProps) {
+  const { t } = useTranslation('components');
   const hasPeriodPicker = view === 'overview' || view === 'activity';
 
   return (
@@ -42,7 +50,7 @@ export function AppHeader({
           <Input
             variant="date"
             type="date"
-            aria-label="Початок періоду"
+            aria-label={t('header.periodStart')}
             value={customRange.from}
             min={toDayKey(offsetDay(new Date(), -365))}
             max={customRange.to}
@@ -57,7 +65,7 @@ export function AppHeader({
           <Input
             variant="date"
             type="date"
-            aria-label="Кінець періоду"
+            aria-label={t('header.periodEnd')}
             value={customRange.to}
             min={customRange.from}
             max={toDayKey(new Date())}
@@ -70,13 +78,14 @@ export function AppHeader({
           />
         </div>
       )}
+      <LanguageSelect compact value={language} onChange={onLanguageChange} />
       <div className="no-drag ml-1 flex items-center gap-2">
         <Button
           variant="topIcon"
           size="none"
           onClick={onThemeToggle}
           className="h-9 w-9"
-          aria-label="Змінити тему"
+          aria-label={t('header.toggleTheme')}
         >
           {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
         </Button>
@@ -86,7 +95,9 @@ export function AppHeader({
           onClick={onTrackingToggle}
           className={`h-9 w-9 ${trackingEnabled ? 'text-emerald-600' : 'text-amber-600'}`}
           aria-label={
-            trackingEnabled ? 'Призупинити трекінг' : 'Відновити трекінг'
+            trackingEnabled
+              ? t('header.pauseTracking')
+              : t('header.resumeTracking')
           }
         >
           {trackingEnabled ? <Pause size={15} /> : <Play size={15} />}

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { UsageStore } = require('./store.cjs');
+const { UsageStore } = require('../store.cjs');
 
 function createStore(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
@@ -130,7 +130,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   const databasePath = path.join(directory, 'usage-data.sqlite3');
   const date = new Date(2026, 7, 5, 10, 30, 0);
   const firstStore = new UsageStore(databasePath);
-  firstStore.updateSettings({ websiteTrackingEnabled: true });
+  firstStore.updateSettings({ language: 'en', websiteTrackingEnabled: true });
   firstStore.recordSample(
     {
       id: 'com.example.Browser',
@@ -159,6 +159,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   });
 
   assert.equal(reopenedStore.getSettings().websiteTrackingEnabled, true);
+  assert.equal(reopenedStore.getSettings().language, 'en');
   assert.equal(reopenedStore.getTodayUsage('com.example.Browser', date), 125);
   assert.deepEqual(
     reopenedStore.aggregate('2026-08-05', '2026-08-05').apps[0].sites,
@@ -170,14 +171,17 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   );
   assert.equal(
     reopenedStore.database.prepare('PRAGMA user_version').get().user_version,
-    1,
+    2,
   );
   assert.deepEqual(
     reopenedStore.database
       .prepare('SELECT version, name FROM schema_migrations')
       .all()
       .map(({ version, name }) => ({ version, name })),
-    [{ version: 1, name: 'initial_schema' }],
+    [
+      { version: 1, name: 'initial_schema' },
+      { version: 2, name: 'settings_language' },
+    ],
   );
   assert.equal(
     reopenedStore.database.prepare('PRAGMA foreign_key_check').all().length,
@@ -186,6 +190,19 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   if (process.platform !== 'win32') {
     assert.equal(fs.statSync(databasePath).mode & 0o777, 0o600);
   }
+});
+
+test('new databases use the supplied system language', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const store = new UsageStore(path.join(directory, 'usage-data.sqlite3'), {
+    defaultLanguage: 'en',
+  });
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(store.getSettings().language, 'en');
 });
 
 test('imports the legacy JSON once and keeps it as a backup', (t) => {

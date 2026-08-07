@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limitApi } from '../api';
 import { offsetDay, rangeForPeriod, toDayKey } from '../lib/format';
+import i18n, { normalizeLanguage, type AppLanguage } from '../i18n';
+import { translateError } from '../i18n/helpers';
 import type { AppLimit, LimitInput, LimitNotification } from '../types/limits';
 import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
 import type { Settings as SettingsType } from '../types/settings';
@@ -28,6 +30,9 @@ export function useLimitApp() {
   });
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [language, setLanguage] = useState<AppLanguage>(() =>
+    normalizeLanguage(i18n.resolvedLanguage),
+  );
   const [error, setError] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -47,8 +52,8 @@ export function useLimitApp() {
       } catch (reason) {
         setError(
           reason instanceof Error
-            ? reason.message
-            : 'Не вдалося завантажити статистику',
+            ? translateError(reason.message, 'dashboardLoad')
+            : i18n.t('errors:dashboardLoad'),
         );
       } finally {
         setLoading(false);
@@ -82,6 +87,14 @@ export function useLimitApp() {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('limit-theme', theme);
   }, [theme]);
+  useEffect(() => {
+    const language = data?.settings.language;
+    if (!language) return;
+    document.documentElement.lang = language;
+    setLanguage(language);
+    localStorage.setItem('limit-language', language);
+    if (i18n.resolvedLanguage !== language) void i18n.changeLanguage(language);
+  }, [data?.settings.language]);
 
   async function toggleTracking() {
     if (!data) return;
@@ -92,6 +105,22 @@ export function useLimitApp() {
   async function updateSettings(patch: Partial<SettingsType>) {
     await limitApi.updateSettings(patch);
     await loadDashboard();
+  }
+
+  async function changeLanguage(language: AppLanguage) {
+    document.documentElement.lang = language;
+    setLanguage(language);
+    localStorage.setItem('limit-language', language);
+    await i18n.changeLanguage(language);
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            settings: { ...current.settings, language },
+          }
+        : current,
+    );
+    await updateSettings({ language });
   }
 
   function openLimitForApp(app: AppUsage) {
@@ -119,10 +148,12 @@ export function useLimitApp() {
 
   return {
     customRange,
+    changeLanguage,
     data,
     deleteLimit,
     error,
     loading,
+    language,
     loadDashboard,
     modal,
     openLimitForApp,

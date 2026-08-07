@@ -1,12 +1,21 @@
 import { BarChart3, Clock3, Gauge, Settings2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { ViewKey } from '../types/navigation';
 import { Button } from './ui/button';
 
-const navigation: Array<{ key: ViewKey; label: string; icon: typeof Gauge }> = [
-  { key: 'overview', label: 'Огляд', icon: Gauge },
-  { key: 'activity', label: 'Активність', icon: BarChart3 },
-  { key: 'limits', label: 'Ліміти', icon: Clock3 },
-  { key: 'settings', label: 'Налаштування', icon: Settings2 },
+const navigation: Array<{
+  key: ViewKey;
+  labelKey:
+    | 'navigation.overview'
+    | 'navigation.activity'
+    | 'navigation.limits'
+    | 'navigation.settings';
+  icon: typeof Gauge;
+}> = [
+  { key: 'overview', labelKey: 'navigation.overview', icon: Gauge },
+  { key: 'activity', labelKey: 'navigation.activity', icon: BarChart3 },
+  { key: 'limits', labelKey: 'navigation.limits', icon: Clock3 },
+  { key: 'settings', labelKey: 'navigation.settings', icon: Settings2 },
 ];
 
 interface SidebarProps {
@@ -22,6 +31,7 @@ export function Sidebar({
   trackingEnabled,
   currentApp,
 }: SidebarProps) {
+  const { t } = useTranslation('components');
   return (
     <aside className="sidebar flex h-full w-[248px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] px-4 pb-5 pt-8">
       <div className="app-drag mb-8 flex items-center gap-3 px-3">
@@ -33,13 +43,13 @@ export function Sidebar({
             Limit
           </div>
           <div className="text-[11px] font-medium text-[var(--muted)]">
-            Свідомий час
+            {t('sidebar.tagline')}
           </div>
         </div>
       </div>
 
-      <nav className="space-y-1" aria-label="Основна навігація">
-        {navigation.map(({ key, label, icon: Icon }) => (
+      <nav className="space-y-1" aria-label={t('navigation.label')}>
+        {navigation.map(({ key, labelKey, icon: Icon }) => (
           <Button
             variant="nav"
             size="none"
@@ -48,7 +58,7 @@ export function Sidebar({
             active={view === key}
           >
             <Icon size={18} strokeWidth={view === key ? 2.3 : 1.9} />
-            {label}
+            {t(labelKey)}
           </Button>
         ))}
       </nav>
@@ -65,12 +75,12 @@ export function Sidebar({
               className={`relative inline-flex h-2.5 w-2.5 rounded-full ${trackingEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`}
             />
           </span>
-          {trackingEnabled ? 'Трекінг активний' : 'Трекінг на паузі'}
+          {t(trackingEnabled ? 'sidebar.active' : 'sidebar.paused')}
         </div>
         <p className="truncate text-[11px] leading-4 text-[var(--muted)]">
           {trackingEnabled && currentApp
-            ? `Зараз: ${currentApp}`
-            : 'Дані залишаються на пристрої'}
+            ? t('sidebar.current', { app: currentApp })
+            : t('sidebar.local')}
         </p>
       </div>
     </aside>

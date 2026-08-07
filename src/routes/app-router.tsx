@@ -9,6 +9,7 @@ import type {
   Settings as SettingsType,
 } from '../types/settings';
 import type { AppUsage, DashboardData } from '../types/usage';
+import type { AppLanguage } from '../i18n';
 
 interface AppRouterProps {
   data: DashboardData;
@@ -19,6 +20,7 @@ interface AppRouterProps {
   onOpenLimits: () => void;
   onOpenPermissions: (kind?: PermissionKind) => void;
   onOpenSettings: () => void;
+  onLanguageChange: (language: AppLanguage) => void;
   onPauseLimit: (appId: string) => void;
   onSetLimit: (app: AppUsage) => void;
   onSettingsChange: (patch: Partial<SettingsType>) => void;
@@ -34,6 +36,7 @@ export function AppRouter({
   onOpenLimits,
   onOpenPermissions,
   onOpenSettings,
+  onLanguageChange,
   onPauseLimit,
   onSetLimit,
   onSettingsChange,
@@ -62,6 +65,7 @@ export function AppRouter({
         data={data}
         theme={theme}
         onThemeChange={onThemeChange}
+        onLanguageChange={onLanguageChange}
         onSettingsChange={onSettingsChange}
         onOpenPermissions={onOpenPermissions}
       />

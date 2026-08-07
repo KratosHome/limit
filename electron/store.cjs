@@ -1,9 +1,12 @@
 const path = require('node:path');
+const { AppError, ERROR_CODES } = require('./errors.cjs');
 const { SQLiteStorage } = require('./sqlite-storage.cjs');
 const {
+  CATEGORY_IDS,
   cloneDefaultData,
   getOwn,
   guessCategory,
+  normalizeCategory,
   normalizeData,
   normalizeSiteDomain,
 } = require('./store/data-model.cjs');
@@ -24,12 +27,13 @@ const {
 
 class UsageStore {
   constructor(databasePath, options = {}) {
+    const defaultLanguage = options.defaultLanguage === 'en' ? 'en' : 'uk';
     this.storage = new SQLiteStorage(databasePath, {
       ...options,
       dataAdapter: {
-        cloneDefaultData,
-        guessCategory,
-        normalizeData,
+        cloneDefaultData: () => cloneDefaultData(defaultLanguage),
+        normalizeCategory,
+        normalizeData: (value) => normalizeData(value, defaultLanguage),
         normalizeSiteDomain,
       },
     });
@@ -64,6 +68,8 @@ class UsageStore {
     const input =
       patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
     const allowed = {};
+    if (input.language === 'uk' || input.language === 'en')
+      allowed.language = input.language;
     if (typeof input.trackingEnabled === 'boolean')
       allowed.trackingEnabled = input.trackingEnabled;
     if (typeof input.websiteTrackingEnabled === 'boolean')
@@ -226,6 +232,7 @@ function createUpdatedEntry(day, sample, seconds, isLaunch, date, hour) {
         lastSeenAt: null,
       };
   entry.name = sample.name;
+  entry.category = normalizeCategory(entry.category, sample.name);
   if (
     typeof sample.executablePath === 'string' &&
     sample.executablePath.length <= 4096 &&
@@ -272,16 +279,17 @@ function updateSiteUsage(entry, rawDomain, seconds, date) {
 
 function createLimit(input, previous = {}) {
   previous ||= {};
-  if (!input?.appId || !input?.appName) throw new Error('Оберіть застосунок');
+  if (!input?.appId || !input?.appName)
+    throw new AppError(ERROR_CODES.SELECT_APP);
   if (String(input.appId).length > 512 || String(input.appName).length > 120)
-    throw new Error('Некоректні дані застосунку');
+    throw new AppError(ERROR_CODES.INVALID_APP_DATA);
   const dailyLimitMinutes = Math.round(Number(input.dailyLimitMinutes));
   if (
     !Number.isFinite(dailyLimitMinutes) ||
     dailyLimitMinutes < 1 ||
     dailyLimitMinutes > 1440
   ) {
-    throw new Error('Ліміт має бути від 1 хвилини до 24 годин');
+    throw new AppError(ERROR_CODES.INVALID_LIMIT);
   }
   const warningMinutes = Math.min(
     Math.max(0, Math.round(Number(input.warningMinutes) || 0)),
@@ -304,9 +312,11 @@ function createLimit(input, previous = {}) {
 }
 
 module.exports = {
+  CATEGORY_IDS,
   UsageStore,
   addDays,
   enumerateDays,
   guessCategory,
   localDay,
+  normalizeCategory,
 };

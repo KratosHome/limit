@@ -7,7 +7,7 @@ const {
   fileIconSize,
   resolveApplicationIconPath,
   safeApplicationName,
-} = require('./app-icon.cjs');
+} = require('../app-icon.cjs');
 
 test('appBundlePath returns the outer macOS application bundle', () => {
   assert.equal(

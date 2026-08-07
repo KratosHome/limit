@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { type ReactNode, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityChart } from '../components/activity-chart';
 import { AppIcon } from '../components/app-icon';
 import { SiteUsagePanel } from '../components/site-usage-panel';
@@ -83,11 +84,11 @@ function TopAppRow({
   totalSeconds: number;
   websiteTrackingEnabled: boolean;
 }) {
+  const { t } = useTranslation(['activity']);
   const [expanded, setExpanded] = useState(true);
   const sitesPanelId = useId();
   const sites = app.sites ?? [];
-  const isBrowser =
-    app.isBrowser || sites.length > 0 || app.category === 'Браузер';
+  const isBrowser = app.isBrowser || sites.length > 0;
   const share = totalSeconds
     ? Math.min(100, (app.seconds / totalSeconds) * 100)
     : 0;
@@ -109,7 +110,12 @@ function TopAppRow({
                   className="h-8 w-8 shrink-0"
                   aria-expanded={expanded}
                   aria-controls={sitesPanelId}
-                  aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} сайти для ${app.name}`}
+                  aria-label={t('activity:sitesToggle', {
+                    action: t(
+                      expanded ? 'activity:collapse' : 'activity:expand',
+                    ),
+                    app: app.name,
+                  })}
                   onClick={() => setExpanded((value) => !value)}
                 >
                   <ChevronDown
@@ -157,6 +163,7 @@ export function Overview({
   onOpenSettings,
   onEditLimit,
 }: OverviewProps) {
+  const { t } = useTranslation('overview');
   const topApp = data.apps[0];
   const change = formatChange(data.totalSeconds, data.previousTotalSeconds);
   const enabledLimits = data.limits.filter(
@@ -167,10 +174,10 @@ export function Overview({
     <div>
       <div className="mb-7">
         <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-          <Sparkles size={13} /> Щоденний фокус
+          <Sparkles size={13} /> {t('eyebrow')}
         </div>
         <h1 className="text-[28px] font-bold tracking-[-0.045em] text-[var(--text)]">
-          Ваш цифровий день
+          {t('title')}
         </h1>
         <p className="mt-1 text-[12px] font-medium text-[var(--muted)]">
           {formatFullDate()}
@@ -179,11 +186,11 @@ export function Overview({
 
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          label="Активний час"
+          label={t('stats.activeTime')}
           value={formatDuration(data.totalSeconds)}
           hint={
             change === null ? (
-              'Перші дані для порівняння'
+              t('stats.firstComparison')
             ) : (
               <span
                 className={`inline-flex items-center gap-1 ${change <= 0 ? 'text-emerald-600' : 'text-rose-500'}`}
@@ -193,34 +200,34 @@ export function Overview({
                 ) : (
                   <ArrowUpRight size={13} />
                 )}
-                {Math.abs(change)}% проти минулого періоду
+                {t('stats.comparison', { value: Math.abs(change) })}
               </span>
             )
           }
           icon={Clock3}
         />
         <StatCard
-          label="Топ застосунок"
+          label={t('stats.topApp')}
           value={topApp?.name || '—'}
-          hint={topApp ? formatDuration(topApp.seconds) : 'Поки немає даних'}
+          hint={topApp ? formatDuration(topApp.seconds) : t('stats.noData')}
           icon={Gauge}
           tone="teal"
         />
         <StatCard
-          label="Активні ліміти"
+          label={t('stats.activeLimits')}
           value={String(enabledLimits.length)}
           hint={
             enabledLimits.length
-              ? 'Допомагають тримати баланс'
-              : 'Додайте перший ліміт'
+              ? t('stats.limitsHelp')
+              : t('stats.addFirstLimit')
           }
           icon={ShieldCheck}
           tone="amber"
         />
         <StatCard
-          label="Запусків"
+          label={t('stats.launches')}
           value={String(data.apps.reduce((sum, app) => sum + app.launches, 0))}
-          hint="Перемикань між застосунками"
+          hint={t('stats.switches')}
           icon={ArrowUpRight}
           tone="rose"
         />
@@ -230,13 +237,11 @@ export function Overview({
         <section className="card p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="section-title">Ритм активності</h2>
-              <p className="section-subtitle">
-                Коли ви проводите найбільше часу за екраном
-              </p>
+              <h2 className="section-title">{t('rhythm.title')}</h2>
+              <p className="section-subtitle">{t('rhythm.subtitle')}</p>
             </div>
             <div className="rounded-lg bg-[var(--surface-muted)] px-2.5 py-1 text-[10px] font-bold text-[var(--muted-strong)]">
-              {data.days.length <= 1 ? 'По годинах' : 'По днях'}
+              {t(data.days.length <= 1 ? 'rhythm.hourly' : 'rhythm.daily')}
             </div>
           </div>
           <ActivityChart
@@ -248,11 +253,11 @@ export function Overview({
         <section className="card overflow-hidden">
           <div className="flex items-center justify-between px-5 pb-3 pt-5">
             <div>
-              <h2 className="section-title">Топ застосунків</h2>
-              <p className="section-subtitle">За обраний період</p>
+              <h2 className="section-title">{t('topApps.title')}</h2>
+              <p className="section-subtitle">{t('topApps.subtitle')}</p>
             </div>
             <Button variant="link" size="none" onClick={onOpenActivity}>
-              Усі
+              {t('topApps.all')}
             </Button>
           </div>
           <div className="px-2 pb-2">
@@ -266,9 +271,7 @@ export function Overview({
               />
             ))}
             {!data.apps.length && (
-              <div className="empty-mini">
-                Відкрийте кілька застосунків — статистика зʼявиться тут.
-              </div>
+              <div className="empty-mini">{t('topApps.empty')}</div>
             )}
           </div>
         </section>
@@ -277,11 +280,11 @@ export function Overview({
       <section className="card mt-4 p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="section-title">Ліміти сьогодні</h2>
-            <p className="section-subtitle">Прогрес до ваших щоденних цілей</p>
+            <h2 className="section-title">{t('limits.title')}</h2>
+            <p className="section-subtitle">{t('limits.subtitle')}</p>
           </div>
           <Button variant="link" size="none" onClick={onOpenLimits}>
-            Керувати
+            {t('limits.manage')}
           </Button>
         </div>
         {enabledLimits.length ? (
@@ -312,10 +315,10 @@ export function Overview({
                         className={`mt-0.5 text-[10px] font-semibold ${exceeded ? 'text-rose-500' : close ? 'text-amber-600' : 'text-emerald-600'}`}
                       >
                         {exceeded
-                          ? 'Ліміт досягнуто'
+                          ? t('limits.reached')
                           : close
-                            ? 'Наближається ліміт'
-                            : 'У межах ліміту'}
+                            ? t('limits.close')
+                            : t('limits.ok')}
                       </div>
                     </div>
                   </div>
@@ -340,7 +343,7 @@ export function Overview({
             onClick={() => onEditLimit()}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] py-6 text-[12px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]"
           >
-            <Clock3 size={16} /> Додати перший щоденний ліміт
+            <Clock3 size={16} /> {t('limits.addFirst')}
           </Button>
         )}
       </section>

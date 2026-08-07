@@ -1,0 +1,80 @@
+export default {
+  eyebrow: 'Your Limit',
+  title: 'Settings',
+  subtitle: 'Manage tracking, background launch, and the app’s appearance.',
+  general: 'General',
+  generalSubtitle: 'Background app behavior',
+  activityTracking: 'Activity tracking',
+  activityTrackingDescription:
+    'Count only time in the active app, not background processes.',
+  websiteTracking: 'Website tracking',
+  websiteTrackingMac:
+    'Optionally track time by browser domain. Only domains are stored, locally on this Mac.',
+  websiteTrackingUnsupported:
+    'This feature is available only on macOS. Only domains are stored—never full addresses or page content.',
+  launchAtLogin: 'Launch at login',
+  launchAtLoginDescription:
+    'Limit will start in the background after you sign in.',
+  idleThreshold: 'Idle threshold',
+  idleThresholdDescription:
+    'Do not count time while you are away from the computer.',
+  idleThresholdSelectLabel: 'Select idle threshold',
+  minutes: '{{count}} min',
+  appearance: 'Appearance',
+  appearanceSubtitle: 'Interface appearance',
+  theme: 'Theme',
+  themeDescription: 'Applies only to the Limit interface.',
+  light: 'Light',
+  dark: 'Dark',
+  privacyTitle: 'Privacy by default',
+  privacyDescription:
+    'History is stored locally on this computer. Website tracking is off by default; when enabled, Limit stores domains only—never full URLs, page content, or browser history.',
+  localStorage: 'Local storage',
+  macAccess: 'macOS permissions',
+  macAccessDescription:
+    'Limit cannot directly inspect every system toggle. The buttons below are always available for a manual check.',
+  devMode:
+    'Development mode: macOS may list IntelliJ IDEA, Terminal, or Electron here, depending on how the app was started. Launch the packaged Limit.app directly to see Limit itself in the list.',
+  apps: 'Apps',
+  sites: 'Sites',
+  enableSites: 'Enable website tracking',
+  accessibility: 'Accessibility',
+  accessibilityDescription:
+    'Allows Limit to identify the active app and supported browser tab. The system prompt appears only after your action, never from a background loop.',
+  openAccessibility: 'Open Accessibility',
+  openAccessibilityLabel: 'Open macOS Accessibility settings',
+  automation: 'Automation',
+  automationDescription:
+    'Allows Limit to request only the active Arc tab’s domain. Limit appears in the list after the first real attempt to read an Arc tab.',
+  openAutomation: 'Open Automation',
+  openAutomationLabel: 'Open macOS Automation settings',
+  permissionsAftercare:
+    'Return to Limit after changing permissions. Restart the app if macOS does not apply them immediately.',
+  about: 'About',
+  version: 'Version',
+  waylandNotice:
+    'Global active-window tracking is unavailable on Linux/Wayland due to system limitations.',
+  status: {
+    disabled: 'Disabled',
+    activityDisabledDetail: 'Enable general activity tracking.',
+    notRunning: 'Not running',
+    notRunningDetail: 'Restart Limit and check system permissions.',
+    attention: 'Needs attention',
+    accessibilityDetail: 'Check Accessibility in macOS Settings.',
+    working: 'Working',
+    activityWorkingDetail: 'The active app is being detected.',
+    checking: 'Checking',
+    checkingDetail: 'Limit is waiting for the next active app.',
+    websitesDisabledDetail:
+      'Enable this feature to start collecting time by domain.',
+    permissionsDetail: 'Check Accessibility and Automation.',
+    noDomain: 'No domain received',
+    noDomainDetail: 'Open Arc and check Accessibility and Automation.',
+    domainReceived: 'Received domain {{domain}}.',
+    accessConfirmed: 'Access confirmed',
+    accessConfirmedDetail:
+      'Domains will be collected while a browser is active.',
+    waitingBrowser: 'Enabled · waiting for browser',
+    waitingBrowserDetail: 'Open a regular Arc tab to verify access.',
+  },
+} as const;

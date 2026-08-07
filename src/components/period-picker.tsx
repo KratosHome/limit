@@ -1,12 +1,20 @@
 import type { PeriodKey } from '../types/navigation';
+import { useTranslation } from 'react-i18next';
 import { Button } from './ui/button';
 
-const periods: Array<{ key: PeriodKey; label: string }> = [
-  { key: 'today', label: 'Сьогодні' },
-  { key: 'yesterday', label: 'Вчора' },
-  { key: '7days', label: '7 днів' },
-  { key: '30days', label: '30 днів' },
-  { key: 'custom', label: 'Власний' },
+type PeriodLabelKey =
+  | 'periods.today'
+  | 'periods.yesterday'
+  | 'periods.sevenDays'
+  | 'periods.thirtyDays'
+  | 'periods.custom';
+
+const periods: Array<{ key: PeriodKey; labelKey: PeriodLabelKey }> = [
+  { key: 'today', labelKey: 'periods.today' },
+  { key: 'yesterday', labelKey: 'periods.yesterday' },
+  { key: '7days', labelKey: 'periods.sevenDays' },
+  { key: '30days', labelKey: 'periods.thirtyDays' },
+  { key: 'custom', labelKey: 'periods.custom' },
 ];
 
 export function PeriodPicker({
@@ -16,6 +24,7 @@ export function PeriodPicker({
   value: PeriodKey;
   onChange: (period: PeriodKey) => void;
 }) {
+  const { t } = useTranslation('components');
   return (
     <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface)] p-1 shadow-[var(--shadow-xs)]">
       {periods.map((period) => (
@@ -26,7 +35,7 @@ export function PeriodPicker({
           onClick={() => onChange(period.key)}
           active={value === period.key}
         >
-          {period.label}
+          {t(period.labelKey)}
         </Button>
       ))}
     </div>

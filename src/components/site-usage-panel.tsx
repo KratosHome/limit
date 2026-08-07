@@ -1,4 +1,5 @@
 import { Globe2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { formatDuration } from '../lib/format';
 import type { AppUsage } from '../types/usage';
 import { Button } from './ui/button';
@@ -18,6 +19,7 @@ export function SiteUsagePanel({
   className = '',
   limit = 5,
 }: SiteUsagePanelProps) {
+  const { t } = useTranslation('components');
   const sites = app.sites ?? [];
   const visibleSites = sites.slice(0, limit);
   const hiddenSiteCount = Math.max(0, sites.length - visibleSites.length);
@@ -29,7 +31,10 @@ export function SiteUsagePanel({
   return (
     <div className={`border-l border-[var(--border)] pl-3 ${className}`}>
       {sites.length ? (
-        <ul className="space-y-1" aria-label={`Сайти в ${app.name}`}>
+        <ul
+          className="space-y-1"
+          aria-label={t('sites.label', { app: app.name })}
+        >
           {visibleSites.map((site) => {
             const siteShare = app.seconds
               ? Math.min(100, (site.seconds / app.seconds) * 100)
@@ -66,13 +71,13 @@ export function SiteUsagePanel({
           })}
           {hiddenSiteCount > 0 && (
             <li className="px-2 py-1.5 text-[10px] font-semibold text-[var(--muted)]">
-              Ще сайтів: {hiddenSiteCount}
+              {t('sites.more', { count: hiddenSiteCount })}
             </li>
           )}
           {unattributedSeconds >= 1 && (
             <li className="flex items-center justify-between gap-2 px-2 py-1.5 text-[10px] text-[var(--muted)]">
               <span className="truncate font-medium">
-                Без визначеного домену
+                {t('sites.unattributed')}
               </span>
               <span className="shrink-0 font-semibold tabular-nums">
                 {formatDuration(unattributedSeconds)}
@@ -84,8 +89,8 @@ export function SiteUsagePanel({
         <div className="px-2 py-2">
           <p className="text-[10px] font-medium leading-4 text-[var(--muted)]">
             {websiteTrackingEnabled
-              ? `Домен ще не отримано. Перевірте доступи macOS і відкрийте вкладку ${app.name}.`
-              : 'Відстеження сайтів зараз вимкнене.'}
+              ? t('sites.unavailable', { app: app.name })
+              : t('sites.disabled')}
           </p>
           <Button
             variant="link"
@@ -93,7 +98,7 @@ export function SiteUsagePanel({
             onClick={onOpenSettings}
             className="mt-2"
           >
-            Відкрити налаштування
+            {t('sites.openSettings')}
           </Button>
         </div>
       )}

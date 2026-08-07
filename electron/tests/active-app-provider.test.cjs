@@ -8,7 +8,7 @@ const {
   unpackedPath,
   websiteTrackingErrorKind,
   windowsBindingPriority,
-} = require('./active-app-provider.cjs');
+} = require('../active-app-provider.cjs');
 
 function createBindingTree() {
   const root = fs.mkdtempSync(

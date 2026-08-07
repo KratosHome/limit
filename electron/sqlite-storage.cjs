@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
+const { AppError, ERROR_CODES } = require('./errors.cjs');
 
 class UnsupportedDatabaseVersionError extends Error {}
 class DatabaseMigrationError extends Error {}
@@ -20,8 +21,9 @@ class SQLiteStorage {
     this.legacyJsonPath = options.legacyJsonPath || null;
     this.cloneDefaultData = options.dataAdapter.cloneDefaultData;
     this.normalizeData = options.dataAdapter.normalizeData;
-    this.guessCategory = options.dataAdapter.guessCategory;
+    this.normalizeCategory = options.dataAdapter.normalizeCategory;
     this.normalizeSiteDomain = options.dataAdapter.normalizeSiteDomain;
+    this.defaultLanguage = options.defaultLanguage === 'en' ? 'en' : 'uk';
     this.data = this.cloneDefaultData();
     this.database = null;
     this.lastPersistenceError = null;
@@ -65,8 +67,7 @@ class SQLiteStorage {
         );
         this.writeBlocked = true;
       }
-      this.lastPersistenceError =
-        'Не вдалося прочитати локальну базу. Створено резервну копію для відновлення.';
+      this.lastPersistenceError = ERROR_CODES.STORAGE_READ;
       this.database = this.writeBlocked
         ? new DatabaseSync(':memory:')
         : new DatabaseSync(this.databasePath, { timeout: 5000 });
@@ -98,8 +99,7 @@ class SQLiteStorage {
             backupError.message,
           );
         }
-        this.lastPersistenceError =
-          'Не вдалося імпортувати стару JSON-історію. Створено резервну копію для відновлення.';
+        this.lastPersistenceError = ERROR_CODES.STORAGE_IMPORT;
       }
     }
     this.replaceAllData(initialData);
@@ -180,6 +180,38 @@ class SQLiteStorage {
             last_reached_date TEXT,
             paused_date TEXT
           ) STRICT;
+        `,
+      },
+      {
+        version: 2,
+        name: 'settings_language',
+        up: `
+          ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT '${this.defaultLanguage}'
+            CHECK (language IN ('uk', 'en'));
+        `,
+      },
+      {
+        version: 3,
+        name: 'category_ids',
+        up: `
+          UPDATE usage_entries
+          SET category = CASE
+            WHEN lower(trim(category)) = 'browser'
+              OR trim(category) IN ('Браузер', 'браузер') THEN 'browser'
+            WHEN lower(trim(category)) = 'communication'
+              OR trim(category) IN ('Спілкування', 'спілкування') THEN 'communication'
+            WHEN lower(trim(category)) = 'development'
+              OR trim(category) IN ('Розробка', 'розробка') THEN 'development'
+            WHEN lower(trim(category)) = 'design'
+              OR trim(category) IN ('Дизайн', 'дизайн') THEN 'design'
+            WHEN lower(trim(category)) = 'entertainment'
+              OR trim(category) IN ('Розваги', 'розваги') THEN 'entertainment'
+            WHEN lower(trim(category)) = 'productivity'
+              OR trim(category) IN ('Продуктивність', 'продуктивність') THEN 'productivity'
+            WHEN lower(trim(category)) = 'other'
+              OR trim(category) IN ('Інше', 'інше') THEN 'other'
+            ELSE 'other'
+          END;
         `,
       },
     ];
@@ -271,8 +303,14 @@ class SQLiteStorage {
         // Preserve the original write error.
       }
       console.error('Не вдалося виконати SQLite-транзакцію:', error);
-      this.lastPersistenceError = 'Не вдалося зберегти локальну історію.';
-      throw new Error(this.lastPersistenceError, { cause: error });
+      this.lastPersistenceError = ERROR_CODES.STORAGE_SAVE;
+      throw new AppError(
+        ERROR_CODES.STORAGE_SAVE,
+        'SQLite transaction failed',
+        {
+          cause: error,
+        },
+      );
     }
   }
 
@@ -289,11 +327,12 @@ class SQLiteStorage {
       this.database
         .prepare(
           `INSERT INTO settings (
-            id, tracking_enabled, website_tracking_enabled,
+            id, language, tracking_enabled, website_tracking_enabled,
             launch_at_login, idle_threshold_seconds
-          ) VALUES (1, ?, ?, ?, ?)`,
+          ) VALUES (1, ?, ?, ?, ?, ?)`,
         )
         .run(
+          data.settings.language,
           Number(data.settings.trackingEnabled),
           Number(data.settings.websiteTrackingEnabled),
           Number(data.settings.launchAtLogin),
@@ -330,9 +369,7 @@ class SQLiteStorage {
             dayKey,
             String(entry.id),
             String(entry.name),
-            typeof entry.category === 'string'
-              ? entry.category
-              : this.guessCategory(String(entry.name)),
+            this.normalizeCategory(entry.category, String(entry.name)),
             typeof entry.executablePath === 'string' &&
               path.isAbsolute(entry.executablePath)
               ? entry.executablePath
@@ -411,6 +448,7 @@ class SQLiteStorage {
       .get();
     if (settings) {
       data.settings = {
+        language: settings.language === 'en' ? 'en' : 'uk',
         trackingEnabled: Boolean(settings.tracking_enabled),
         websiteTrackingEnabled: Boolean(settings.website_tracking_enabled),
         launchAtLogin: Boolean(settings.launch_at_login),
@@ -428,7 +466,7 @@ class SQLiteStorage {
         value: {
           id: row.app_id,
           name: row.name,
-          category: row.category,
+          category: this.normalizeCategory(row.category, row.name),
           seconds: row.seconds,
           launches: row.launches,
           hourly: {},
@@ -484,7 +522,7 @@ class SQLiteStorage {
 
   getStatus() {
     return {
-      error: this.lastPersistenceError,
+      errorCode: this.lastPersistenceError,
       recoveryCreated: this.recoveryCreated,
     };
   }
@@ -498,7 +536,7 @@ class SQLiteStorage {
       return true;
     } catch (error) {
       console.error('Не вдалося завершити SQLite maintenance:', error);
-      this.lastPersistenceError = 'Не вдалося завершити збереження історії.';
+      this.lastPersistenceError = ERROR_CODES.STORAGE_MAINTENANCE;
       return false;
     }
   }

@@ -7,11 +7,13 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppIcon } from '../components/app-icon';
 import { SiteUsagePanel } from '../components/site-usage-panel';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { formatDuration } from '../lib/format';
+import { translateCategory } from '../i18n/helpers';
 import type { AppUsage, DashboardData } from '../types/usage';
 
 type SortKey = 'name' | 'seconds' | 'launches' | 'share';
@@ -23,36 +25,57 @@ interface ActivityProps {
 }
 
 export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
+  const { i18n, t } = useTranslation('activity');
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('Усі категорії');
+  const [category, setCategory] = useState('__all__');
   const [sortKey, setSortKey] = useState<SortKey>('seconds');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedApps, setExpandedApps] = useState<Set<string>>(
     () => new Set(),
   );
   const categories = useMemo(
-    () => ['Усі категорії', ...new Set(data.apps.map((app) => app.category))],
+    () => [...new Set(data.apps.map((app) => app.category))],
     [data.apps],
+  );
+  const percentFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(
+        i18n.resolvedLanguage === 'uk' ? 'uk-UA' : 'en-US',
+        {
+          style: 'percent',
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        },
+      ),
+    [i18n.resolvedLanguage],
   );
 
   const apps = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase('uk');
+    const locale = i18n.resolvedLanguage === 'en' ? 'en' : 'uk';
+    const normalized = query.trim().toLocaleLowerCase(locale);
     const filtered = data.apps.filter((app) => {
       const matchesQuery =
-        !normalized || app.name.toLocaleLowerCase('uk').includes(normalized);
+        !normalized || app.name.toLocaleLowerCase(locale).includes(normalized);
       const matchesCategory =
-        category === 'Усі категорії' || app.category === category;
+        category === '__all__' || app.category === category;
       return matchesQuery && matchesCategory;
     });
     const direction = sortDirection === 'asc' ? 1 : -1;
     return filtered.sort((a, b) => {
       if (sortKey === 'name')
-        return a.name.localeCompare(b.name, 'uk') * direction;
+        return a.name.localeCompare(b.name, locale) * direction;
       if (sortKey === 'launches') return (a.launches - b.launches) * direction;
       if (sortKey === 'share') return (a.seconds - b.seconds) * direction;
       return (a.seconds - b.seconds) * direction;
     });
-  }, [category, data.apps, query, sortDirection, sortKey]);
+  }, [
+    category,
+    data.apps,
+    i18n.resolvedLanguage,
+    query,
+    sortDirection,
+    sortKey,
+  ]);
 
   function changeSort(next: SortKey) {
     if (sortKey === next)
@@ -86,7 +109,14 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
         variant="ghost"
         size="none"
         onClick={() => changeSort(value)}
-        aria-label={`${String(children)}. ${active ? `Сортування ${sortDirection === 'asc' ? 'за зростанням' : 'за спаданням'}` : 'Сортувати'}`}
+        aria-label={t(
+          active
+            ? sortDirection === 'asc'
+              ? 'sort.ascending'
+              : 'sort.descending'
+            : 'sort.inactive',
+          { label: String(children) },
+        )}
         className={`inline-flex items-center gap-1 rounded-none uppercase tracking-[0.08em] hover:bg-transparent ${active ? 'text-[var(--text)]' : ''}`}
       >
         {children}
@@ -99,12 +129,10 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
     <div>
       <div className="mb-7">
         <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-          <SlidersHorizontal size={13} /> Детальна статистика
+          <SlidersHorizontal size={13} /> {t('eyebrow')}
         </div>
-        <h1 className="page-title">Активність</h1>
-        <p className="page-subtitle">
-          Переглядайте, куди йде ваш час, і знаходьте звички для покращення.
-        </p>
+        <h1 className="page-title">{t('title')}</h1>
+        <p className="page-subtitle">{t('subtitle')}</p>
       </div>
 
       <div className="mb-4 grid grid-cols-[minmax(260px,1fr)_210px_auto] gap-3">
@@ -114,32 +142,35 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
             variant="ghost"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Пошук застосунку…"
+            placeholder={t('search')}
+            aria-label={t('searchLabel')}
           />
         </label>
         <label className="input-shell flex items-center gap-2">
           <SlidersHorizontal size={15} className="text-[var(--muted)]" />
           <select
-            aria-label="Категорія застосунку"
+            aria-label={t('categoryLabel')}
             value={category}
             onChange={(event) => setCategory(event.target.value)}
             className="w-full bg-transparent text-[12px] font-semibold outline-none"
           >
+            <option value="__all__">{t('allCategories')}</option>
             {categories.map((item) => (
-              <option key={item}>{item}</option>
+              <option key={item} value={item}>
+                {translateCategory(item)}
+              </option>
             ))}
           </select>
         </label>
         <div className="input-shell flex items-center gap-2 px-4 text-[11px] font-semibold text-[var(--muted-strong)]">
-          <CalendarDays size={15} /> {data.days.length}{' '}
-          {data.days.length === 1 ? 'день' : 'днів'}
+          <CalendarDays size={15} /> {t('days', { count: data.days.length })}
         </div>
       </div>
 
       <section className="card overflow-x-auto">
         <div
           role="table"
-          aria-label="Активність застосунків"
+          aria-label={t('tableLabel')}
           className="min-w-[830px] overflow-hidden rounded-2xl"
         >
           <div
@@ -156,10 +187,10 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                   : 'none'
               }
             >
-              <SortLabel value="name">Застосунок</SortLabel>
+              <SortLabel value="name">{t('columns.app')}</SortLabel>
             </div>
             <span role="columnheader" className="uppercase tracking-[0.08em]">
-              Категорія
+              {t('columns.category')}
             </span>
             <div
               role="columnheader"
@@ -171,7 +202,7 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                   : 'none'
               }
             >
-              <SortLabel value="seconds">Активний час</SortLabel>
+              <SortLabel value="seconds">{t('columns.activeTime')}</SortLabel>
             </div>
             <div
               role="columnheader"
@@ -183,13 +214,13 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                   : 'none'
               }
             >
-              <SortLabel value="launches">Запуски</SortLabel>
+              <SortLabel value="launches">{t('columns.launches')}</SortLabel>
             </div>
             <span
               role="columnheader"
               className="text-right uppercase tracking-[0.08em]"
             >
-              Ліміт
+              {t('columns.limit')}
             </span>
           </div>
           <div role="rowgroup">
@@ -201,10 +232,7 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
               const limitProgress = limitSeconds
                 ? Math.min(100, (app.seconds / limitSeconds) * 100)
                 : 0;
-              const isBrowser =
-                app.isBrowser ||
-                app.sites.length > 0 ||
-                app.category === 'Браузер';
+              const isBrowser = app.isBrowser || app.sites.length > 0;
               const expanded = expandedApps.has(app.id);
               const sitesPanelId = `activity-sites-${app.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
               return (
@@ -230,7 +258,10 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                               className="h-7 w-7 shrink-0"
                               aria-expanded={expanded}
                               aria-controls={sitesPanelId}
-                              aria-label={`${expanded ? 'Згорнути' : 'Розгорнути'} сайти для ${app.name}`}
+                              aria-label={t('sitesToggle', {
+                                action: t(expanded ? 'collapse' : 'expand'),
+                                app: app.name,
+                              })}
                               onClick={() => toggleSites(app.id)}
                             >
                               <ChevronDown
@@ -242,13 +273,15 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                           )}
                         </div>
                         <div className="mt-0.5 text-[10px] font-medium text-[var(--muted)]">
-                          {share.toFixed(1)}% загального часу
+                          {t('share', {
+                            value: percentFormatter.format(share / 100),
+                          })}
                         </div>
                       </div>
                     </div>
                     <span role="cell">
                       <span className="rounded-lg bg-[var(--surface-muted)] px-2 py-1 text-[9px] font-bold text-[var(--muted-strong)]">
-                        {app.category}
+                        {translateCategory(app.category)}
                       </span>
                     </span>
                     <div role="cell">
@@ -297,7 +330,9 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                           size="none"
                           onClick={() => onSetLimit(app)}
                         >
-                          {formatDuration(app.limitMinutes * 60)} / день
+                          {t('perDay', {
+                            duration: formatDuration(app.limitMinutes * 60),
+                          })}
                         </Button>
                       ) : (
                         <Button
@@ -306,7 +341,7 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                           onClick={() => onSetLimit(app)}
                           className="rounded-lg px-2.5 py-1.5 text-[10px] text-[var(--muted-strong)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]"
                         >
-                          + Ліміт
+                          {t('addLimit')}
                         </Button>
                       )}
                     </div>
@@ -338,10 +373,10 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                   <Search size={20} />
                 </div>
                 <h3 className="text-[13px] font-bold text-[var(--text)]">
-                  Нічого не знайдено
+                  {t('emptyTitle')}
                 </h3>
                 <p className="mt-1 max-w-sm text-[11px] leading-5 text-[var(--muted)]">
-                  Спробуйте іншу назву або скиньте фільтр категорії.
+                  {t('emptyDescription')}
                 </p>
               </div>
             )}

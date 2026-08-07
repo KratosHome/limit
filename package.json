@@ -3,7 +3,7 @@
   "productName": "Limit",
   "version": "0.1.0",
   "private": true,
-  "description": "Приватний desktop-трекер часу та лімітів для застосунків",
+  "description": "Desktop time tracker and app limit manager",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -17,7 +17,7 @@
     "check": "npm run lint && npm run format:check && npm test && npm run build",
     "preview": "vite preview",
     "start": "electron .",
-    "test": "node --test electron/*.test.cjs",
+    "test": "node --test electron/tests/*.test.cjs",
     "package": "npm run build && electron-builder --dir",
     "sign:mac:local": "node scripts/sign-macos-local.cjs",
     "dist": "npm run build && electron-builder",
@@ -57,8 +57,17 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "extraResources": [
+        {
+          "from": "build/locales",
+          "to": ".",
+          "filter": [
+            "**/InfoPlist.strings"
+          ]
+        }
+      ],
       "extendInfo": {
-        "NSAppleEventsUsageDescription": "Limit читає лише домен активної вкладки, коли ввімкнено відстеження сайтів."
+        "NSAppleEventsUsageDescription": "Limit reads only the active tab's domain when website tracking is enabled."
       }
     },
     "win": {
@@ -73,9 +82,11 @@
   },
   "dependencies": {
     "get-windows": "^9.3.0",
+    "i18next": "^26.3.6",
     "lucide-react": "^1.28.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.11"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",

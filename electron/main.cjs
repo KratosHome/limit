@@ -19,6 +19,7 @@ const {
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const { UsageStore, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
+const { desktopMessages, resolveDesktopLanguage } = require('./i18n.cjs');
 
 let mainWindow = null;
 let tray = null;
@@ -158,19 +159,22 @@ function createTray() {
   );
   if (process.platform === 'darwin') icon.setTemplateImage(true);
   tray = new Tray(icon.resize({ width: 18, height: 18 }));
-  tray.setToolTip('Limit — трекер часу');
+  tray.setToolTip(desktopMessages(store?.getSettings().language).trayTooltip);
   refreshTrayMenu();
   tray.on('click', showMainWindow);
 }
 
 function refreshTrayMenu() {
   if (!tray || !store) return;
-  const trackingEnabled = store.getSettings().trackingEnabled;
+  const settings = store.getSettings();
+  const trackingEnabled = settings.trackingEnabled;
+  const t = desktopMessages(settings.language);
+  tray.setToolTip(t.trayTooltip);
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Відкрити Limit', click: showMainWindow },
+      { label: t.open, click: showMainWindow },
       {
-        label: trackingEnabled ? 'Призупинити трекінг' : 'Відновити трекінг',
+        label: trackingEnabled ? t.pauseTracking : t.resumeTracking,
         click: () => {
           store.updateSettings({ trackingEnabled: !trackingEnabled });
           broadcastUpdate();
@@ -179,7 +183,7 @@ function refreshTrayMenu() {
       },
       { type: 'separator' },
       {
-        label: 'Вийти',
+        label: t.quit,
         click: () => {
           isQuitting = true;
           app.quit();
@@ -197,16 +201,17 @@ function broadcastUpdate(payload = {}) {
 function notifyLimit(limit, kind, usedSeconds) {
   const usedMinutes = Math.floor(usedSeconds / 60);
   const isWarning = kind === 'warning';
+  const t = desktopMessages(store?.getSettings().language);
   const payload = {
     kind,
     appId: limit.appId,
     appName: limit.appName,
     title: isWarning
-      ? `Наближається ліміт ${limit.appName}`
-      : `Ліміт ${limit.appName} досягнуто`,
+      ? t.warningTitle(limit.appName)
+      : t.reachedTitle(limit.appName),
     message: isWarning
-      ? `Залишилося ${Math.max(1, limit.dailyLimitMinutes - usedMinutes)} хв.`
-      : `Сьогодні використано ${usedMinutes} хв. із ${limit.dailyLimitMinutes} хв.`,
+      ? t.warningMessage(Math.max(1, limit.dailyLimitMinutes - usedMinutes))
+      : t.reachedMessage(usedMinutes, limit.dailyLimitMinutes),
   };
 
   if (mainWindow && !mainWindow.isDestroyed())
@@ -486,6 +491,9 @@ if (hasSingleInstanceLock)
     store = new UsageStore(
       path.join(app.getPath('userData'), 'usage-data.sqlite3'),
       {
+        defaultLanguage: resolveDesktopLanguage(
+          app.getPreferredSystemLanguages(),
+        ),
         legacyJsonPath: path.join(app.getPath('userData'), 'usage-data.json'),
       },
     );

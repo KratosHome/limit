@@ -1,0 +1,37 @@
+export default {
+  eyebrow: 'Daily focus',
+  title: 'Your digital day',
+  stats: {
+    activeTime: 'Active time',
+    firstComparison: 'First data available for comparison',
+    comparison: '{{value}}% vs previous period',
+    topApp: 'Top app',
+    noData: 'No data yet',
+    activeLimits: 'Active limits',
+    limitsHelp: 'Helping you keep a healthy balance',
+    addFirstLimit: 'Add your first limit',
+    launches: 'Launches',
+    switches: 'Switches between apps',
+  },
+  rhythm: {
+    title: 'Activity rhythm',
+    subtitle: 'When you spend the most time on screen',
+    hourly: 'By hour',
+    daily: 'By day',
+  },
+  topApps: {
+    title: 'Top apps',
+    subtitle: 'For the selected period',
+    all: 'View all',
+    empty: 'Open a few apps and your statistics will appear here.',
+  },
+  limits: {
+    title: 'Today’s limits',
+    subtitle: 'Progress toward your daily goals',
+    manage: 'Manage',
+    reached: 'Limit reached',
+    close: 'Approaching limit',
+    ok: 'Within limit',
+    addFirst: 'Add your first daily limit',
+  },
+} as const;

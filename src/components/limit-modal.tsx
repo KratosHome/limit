@@ -1,9 +1,11 @@
 import { BellRing, Check, Clock3, Info, Trash2, X } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AppIcon } from './app-icon';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { formatMinutes } from '../lib/format';
+import { translateError } from '../i18n/helpers';
 import type { AppLimit, LimitInput } from '../types/limits';
 import type { KnownApp } from '../types/usage';
 
@@ -26,6 +28,7 @@ export function LimitModal({
   onSave,
   onDelete,
 }: LimitModalProps) {
+  const { t } = useTranslation(['modals', 'common', 'errors']);
   const defaultAppId = existing?.appId || initialAppId || apps[0]?.id || '';
   const [appId, setAppId] = useState(defaultAppId);
   const [minutes, setMinutes] = useState(existing?.dailyLimitMinutes || 60);
@@ -90,11 +93,11 @@ export function LimitModal({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!selectedApp) {
-      setError('Оберіть застосунок');
+      setError(t('errors:selectApp'));
       return;
     }
     if (minutes < 1 || minutes > 1440) {
-      setError('Вкажіть час від 1 хвилини до 24 годин');
+      setError(t('errors:invalidDuration'));
       return;
     }
     setSaving(true);
@@ -109,7 +112,9 @@ export function LimitModal({
       });
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : 'Не вдалося зберегти ліміт',
+        reason instanceof Error
+          ? translateError(reason.message, 'saveLimit')
+          : t('errors:saveLimit'),
       );
       setSaving(false);
     }
@@ -118,7 +123,16 @@ export function LimitModal({
   async function remove() {
     if (!existing || saving) return;
     setSaving(true);
-    await onDelete(existing.appId);
+    try {
+      await onDelete(existing.appId);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? translateError(reason.message)
+          : t('errors:unknown'),
+      );
+      setSaving(false);
+    }
   }
 
   return (
@@ -140,20 +154,20 @@ export function LimitModal({
         <div className="flex items-start justify-between border-b border-[var(--border)] px-6 py-5">
           <div>
             <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-              <Clock3 size={13} /> Щоденна межа
+              <Clock3 size={13} /> {t('modals:limit.eyebrow')}
             </div>
             <h2
               id="limit-modal-title"
               className="text-[18px] font-bold tracking-[-0.03em] text-[var(--text)]"
             >
-              {existing ? 'Редагувати ліміт' : 'Новий ліміт'}
+              {t(existing ? 'modals:limit.editTitle' : 'modals:limit.newTitle')}
             </h2>
           </div>
           <Button
             variant="icon"
             size="icon"
             onClick={onClose}
-            aria-label="Закрити"
+            aria-label={t('common:actions.close')}
           >
             <X size={18} />
           </Button>
@@ -162,7 +176,7 @@ export function LimitModal({
         <div className="space-y-5 px-6 py-5">
           <div>
             <label htmlFor="limit-app" className="field-label">
-              Застосунок
+              {t('modals:limit.app')}
             </label>
             <div className="relative mt-2">
               {selectedApp && (
@@ -182,9 +196,7 @@ export function LimitModal({
                 className="field-input h-14 w-full pl-14 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {!apps.length && (
-                  <option value="">
-                    Спочатку відкрийте потрібний застосунок
-                  </option>
+                  <option value="">{t('modals:limit.noApps')}</option>
                 )}
                 {apps.map((app) => (
                   <option key={app.id} value={app.id}>
@@ -197,7 +209,7 @@ export function LimitModal({
 
           <div>
             <label htmlFor="limit-duration" className="field-label">
-              Час на день
+              {t('modals:limit.dailyTime')}
             </label>
             <div className="mt-2 grid grid-cols-4 gap-2">
               {presets.map((preset) => (
@@ -227,7 +239,7 @@ export function LimitModal({
               <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
                 <Input
                   variant="number"
-                  aria-label="Ліміт у хвилинах"
+                  aria-label={t('modals:limit.minutesLabel')}
                   type="number"
                   min="1"
                   max="1440"
@@ -235,7 +247,7 @@ export function LimitModal({
                   onChange={(event) => setMinutes(Number(event.target.value))}
                 />
                 <span className="ml-1 text-[10px] font-semibold text-[var(--muted)]">
-                  хв
+                  {t('modals:limit.minuteUnit')}
                 </span>
               </div>
             </div>
@@ -245,7 +257,7 @@ export function LimitModal({
             <label className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
               <span className="mb-2 flex items-center gap-2 text-[11px] font-bold text-[var(--text)]">
                 <BellRing size={15} className="text-[var(--accent-strong)]" />{' '}
-                Попередити
+                {t('modals:limit.warning')}
               </span>
               <select
                 value={warningMinutes}
@@ -254,19 +266,21 @@ export function LimitModal({
                 }
                 className="w-full bg-transparent text-[11px] font-semibold text-[var(--muted-strong)] outline-none"
               >
-                <option value={0}>Без попередження</option>
-                <option value={5}>За 5 хвилин</option>
-                <option value={10}>За 10 хвилин</option>
-                <option value={15}>За 15 хвилин</option>
+                <option value={0}>{t('modals:limit.noWarning')}</option>
+                {[5, 10, 15].map((value) => (
+                  <option key={value} value={value}>
+                    {t('modals:limit.warningBefore', { count: value })}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
               <span>
                 <span className="block text-[11px] font-bold text-[var(--text)]">
-                  Ліміт активний
+                  {t('modals:limit.enabled')}
                 </span>
                 <span className="mt-1 block text-[9px] font-medium text-[var(--muted)]">
-                  Сповіщати щодня
+                  {t('modals:limit.notifyDaily')}
                 </span>
               </span>
               <input
@@ -281,10 +295,7 @@ export function LimitModal({
 
           <div className="flex items-start gap-2.5 rounded-xl bg-indigo-50/70 px-3.5 py-3 text-[10px] leading-4 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-200">
             <Info size={14} className="mt-0.5 shrink-0" />
-            <span>
-              Limit покаже системне сповіщення, але не закриватиме застосунок
-              автоматично.
-            </span>
+            <span>{t('modals:limit.systemNotice')}</span>
           </div>
           {error && (
             <p role="alert" className="text-[10px] font-semibold text-rose-500">
@@ -303,20 +314,20 @@ export function LimitModal({
                 disabled={saving}
                 className="text-rose-500 hover:text-rose-600"
               >
-                <Trash2 size={14} /> Видалити
+                <Trash2 size={14} /> {t('common:actions.delete')}
               </Button>
             )}
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>
-              Скасувати
+              {t('common:actions.cancel')}
             </Button>
             <Button type="submit" disabled={saving || !apps.length}>
               {saving ? (
-                'Зберігаю…'
+                t('common:actions.saving')
               ) : (
                 <>
-                  <Check size={15} /> Зберегти
+                  <Check size={15} /> {t('common:actions.save')}
                 </>
               )}
             </Button>

@@ -1,13 +1,10 @@
 import type { LimitApi } from './types/api';
+import i18n from './i18n';
 
 const runsInElectron = /\bElectron\//.test(window.navigator.userAgent);
 
 function missingElectronApi(): Promise<never> {
-  return Promise.reject(
-    new Error(
-      'Desktop API недоступний. Перезапустіть Limit або перевірте preload script.',
-    ),
-  );
+  return Promise.reject(new Error(i18n.t('errors:desktopApiUnavailable')));
 }
 
 const unavailableElectronApi: LimitApi = {

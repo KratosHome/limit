@@ -1,4 +1,5 @@
 import type { DateRange, PeriodKey } from '../types/navigation';
+import i18n, { normalizeLanguage } from '../i18n';
 
 export function toDayKey(date: Date): string {
   const year = date.getFullYear();
@@ -34,17 +35,19 @@ export function rangeForPeriod(
   return { from: today, to: today };
 }
 
-export function formatDuration(seconds: number, compact = false): string {
+export function formatDuration(seconds: number): string {
   const safeSeconds = Math.max(0, Math.round(seconds));
   const hours = Math.floor(safeSeconds / 3600);
   const minutes = Math.floor((safeSeconds % 3600) / 60);
   if (hours && minutes)
-    return compact
-      ? `${hours} год ${minutes} хв`
-      : `${hours} год ${minutes} хв`;
-  if (hours) return `${hours} год`;
-  if (minutes) return `${minutes} хв`;
-  return safeSeconds > 0 ? '< 1 хв' : '0 хв';
+    return i18n.t('common:duration.hoursMinutes', { hours, minutes });
+  if (hours) return i18n.t('common:duration.hours', { count: hours });
+  if (minutes) return i18n.t('common:duration.minutes', { count: minutes });
+  return i18n.t(
+    safeSeconds > 0
+      ? 'common:duration.lessThanMinute'
+      : 'common:duration.zeroMinutes',
+  );
 }
 
 export function formatMinutes(minutes: number): string {
@@ -58,18 +61,24 @@ export function formatChange(current: number, previous: number): number | null {
 
 export function formatShortDate(key: string): string {
   const [year, month, day] = key.split('-').map(Number);
-  return new Intl.DateTimeFormat('uk-UA', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(year, month - 1, day));
+  return new Intl.DateTimeFormat(
+    normalizeLanguage(i18n.resolvedLanguage) === 'en' ? 'en-US' : 'uk-UA',
+    {
+      day: 'numeric',
+      month: 'short',
+    },
+  ).format(new Date(year, month - 1, day));
 }
 
 export function formatFullDate(date = new Date()): string {
-  const value = new Intl.DateTimeFormat('uk-UA', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  }).format(date);
+  const value = new Intl.DateTimeFormat(
+    normalizeLanguage(i18n.resolvedLanguage) === 'en' ? 'en-US' : 'uk-UA',
+    {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    },
+  ).format(date);
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 

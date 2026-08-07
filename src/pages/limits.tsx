@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   TimerReset,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AppIcon } from '../components/app-icon';
 import { Button } from '../components/ui/button';
 import { formatDuration, formatMinutes } from '../lib/format';
@@ -21,6 +22,7 @@ interface LimitsProps {
 }
 
 export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
+  const { t } = useTranslation('limits');
   const active = data.limits.filter(
     (limit) => limit.enabled && limit.pausedDate !== data.today,
   ).length;
@@ -39,15 +41,13 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
       <div className="mb-7 flex items-end justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-            <ShieldCheck size={13} /> Цифровий баланс
+            <ShieldCheck size={13} /> {t('eyebrow')}
           </div>
-          <h1 className="page-title">Ліміти</h1>
-          <p className="page-subtitle">
-            Встановіть здорові межі та отримуйте сповіщення вчасно.
-          </p>
+          <h1 className="page-title">{t('title')}</h1>
+          <p className="page-subtitle">{t('subtitle')}</p>
         </div>
         <Button onClick={onAdd}>
-          <Plus size={16} /> Новий ліміт
+          <Plus size={16} /> {t('newLimit')}
         </Button>
       </div>
 
@@ -61,7 +61,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
               {active}
             </div>
             <div className="text-[10px] font-semibold text-[var(--muted)]">
-              Активних сьогодні
+              {t('summary.active')}
             </div>
           </div>
         </div>
@@ -74,7 +74,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
               {paused}
             </div>
             <div className="text-[10px] font-semibold text-[var(--muted)]">
-              На паузі
+              {t('summary.paused')}
             </div>
           </div>
         </div>
@@ -87,7 +87,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
               {exceeded}
             </div>
             <div className="text-[10px] font-semibold text-[var(--muted)]">
-              Ліміт досягнуто
+              {t('summary.reached')}
             </div>
           </div>
         </div>
@@ -111,10 +111,10 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                     ? 'close'
                     : 'ok';
             const labels = {
-              paused: 'На паузі',
-              exceeded: 'Ліміт досягнуто',
-              close: 'Наближається',
-              ok: 'У межах ліміту',
+              paused: t('status.paused'),
+              exceeded: t('status.exceeded'),
+              close: t('status.close'),
+              ok: t('status.ok'),
             };
             const colors = {
               paused: 'text-slate-500 bg-slate-100 dark:bg-slate-500/10',
@@ -135,7 +135,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                         variant="icon"
                         size="icon"
                         onClick={() => onEdit(limit)}
-                        aria-label={`Редагувати ліміт ${limit.appName}`}
+                        aria-label={t('editLabel', { app: limit.appName })}
                       >
                         <MoreHorizontal size={17} />
                       </Button>
@@ -154,7 +154,9 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                       {formatDuration(used)}
                     </span>
                     <span className="ml-1.5 text-[10px] font-semibold text-[var(--muted)]">
-                      із {formatMinutes(limit.dailyLimitMinutes)}
+                      {t('usedOf', {
+                        limit: formatMinutes(limit.dailyLimitMinutes),
+                      })}
                     </span>
                   </div>
                   <span className="text-[11px] font-bold text-[var(--muted-strong)]">
@@ -171,10 +173,11 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                 <div className="mt-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
                   <div className="flex items-center gap-4 text-[10px] font-semibold text-[var(--muted)]">
                     <span className="inline-flex items-center gap-1.5">
-                      <TimerReset size={13} /> Щодня
+                      <TimerReset size={13} /> {t('daily')}
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <BellRing size={13} /> за {limit.warningMinutes || 0} хв
+                      <BellRing size={13} />{' '}
+                      {t('warning', { count: limit.warningMinutes || 0 })}
                     </span>
                   </div>
                   {!pausedToday && limit.enabled ? (
@@ -183,7 +186,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                       size="none"
                       onClick={() => onPause(limit.appId)}
                     >
-                      Пауза на сьогодні
+                      {t('pauseToday')}
                     </Button>
                   ) : (
                     <Button
@@ -191,7 +194,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                       size="none"
                       onClick={() => onEdit(limit)}
                     >
-                      Змінити
+                      {t('change')}
                     </Button>
                   )}
                 </div>
@@ -205,14 +208,13 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
             <Clock3 size={27} />
           </div>
           <h2 className="text-[16px] font-bold text-[var(--text)]">
-            Створіть перший ліміт
+            {t('emptyTitle')}
           </h2>
           <p className="mt-2 max-w-md text-[11px] leading-5 text-[var(--muted)]">
-            Оберіть застосунок, задайте денний час — Limit попередить вас до та
-            після досягнення межі.
+            {t('emptyDescription')}
           </p>
           <Button onClick={onAdd} className="mt-5">
-            <Plus size={16} /> Додати ліміт
+            <Plus size={16} /> {t('addLimit')}
           </Button>
         </section>
       )}

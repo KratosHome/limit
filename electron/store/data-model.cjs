@@ -1,8 +1,9 @@
 const DEFAULT_DATA = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 3,
   usageByDay: {},
   limits: {},
   settings: {
+    language: 'uk',
     trackingEnabled: true,
     websiteTrackingEnabled: false,
     launchAtLogin: false,
@@ -10,23 +11,86 @@ const DEFAULT_DATA = Object.freeze({
   },
 });
 
-function cloneDefaultData() {
-  return JSON.parse(JSON.stringify(DEFAULT_DATA));
+const CATEGORY_IDS = Object.freeze([
+  'browser',
+  'communication',
+  'development',
+  'design',
+  'entertainment',
+  'productivity',
+  'other',
+]);
+
+const CATEGORY_ALIASES = new Map([
+  ['browser', 'browser'],
+  ['браузер', 'browser'],
+  ['communication', 'communication'],
+  ['спілкування', 'communication'],
+  ['development', 'development'],
+  ['розробка', 'development'],
+  ['design', 'design'],
+  ['дизайн', 'design'],
+  ['entertainment', 'entertainment'],
+  ['розваги', 'entertainment'],
+  ['productivity', 'productivity'],
+  ['продуктивність', 'productivity'],
+  ['other', 'other'],
+  ['інше', 'other'],
+]);
+
+function cloneDefaultData(defaultLanguage = 'uk') {
+  const data = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  data.settings.language = defaultLanguage === 'en' ? 'en' : 'uk';
+  return data;
 }
 
 function guessCategory(appName = '') {
   const name = appName.toLowerCase();
   if (/(chrome|safari|firefox|edge|opera|brave|arc)/.test(name))
-    return 'Браузер';
+    return 'browser';
   if (/(telegram|slack|discord|messages|whatsapp|signal|teams|zoom)/.test(name))
-    return 'Спілкування';
+    return 'communication';
   if (/(code|cursor|webstorm|idea|xcode|terminal|iterm|warp|github)/.test(name))
-    return 'Розробка';
-  if (/(figma|photoshop|illustrator|sketch|canva)/.test(name)) return 'Дизайн';
-  if (/(spotify|music|youtube|vlc|netflix)/.test(name)) return 'Розваги';
+    return 'development';
+  if (/(figma|photoshop|illustrator|sketch|canva)/.test(name)) return 'design';
+  if (/(spotify|music|youtube|vlc|netflix)/.test(name)) return 'entertainment';
   if (/(notion|obsidian|notes|word|excel|pages|numbers)/.test(name))
-    return 'Продуктивність';
-  return 'Інше';
+    return 'productivity';
+  return 'other';
+}
+
+function normalizeCategory(value, appName = '') {
+  const alias =
+    typeof value === 'string' ? value.trim().toLocaleLowerCase('uk-UA') : '';
+  return CATEGORY_ALIASES.get(alias) || guessCategory(appName);
+}
+
+function normalizeUsageByDay(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).map(([dayKey, rawDay]) => {
+      if (!rawDay || typeof rawDay !== 'object' || Array.isArray(rawDay))
+        return [dayKey, {}];
+      const entries = Object.entries(rawDay).flatMap(([appId, rawEntry]) => {
+        if (
+          !rawEntry ||
+          typeof rawEntry !== 'object' ||
+          Array.isArray(rawEntry)
+        )
+          return [];
+        return [
+          [
+            appId,
+            {
+              ...rawEntry,
+              category: normalizeCategory(rawEntry.category, rawEntry.name),
+            },
+          ],
+        ];
+      });
+      return [dayKey, Object.fromEntries(entries)];
+    }),
+  );
 }
 
 function normalizeSiteDomain(value) {
@@ -52,8 +116,8 @@ function getOwn(record, key) {
     : null;
 }
 
-function normalizeData(value) {
-  const fallback = cloneDefaultData();
+function normalizeData(value, defaultLanguage = 'uk') {
+  const fallback = cloneDefaultData(defaultLanguage);
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return fallback;
   const settings =
@@ -72,12 +136,7 @@ function normalizeData(value) {
       DEFAULT_DATA.schemaVersion,
       Number.isInteger(value.schemaVersion) ? value.schemaVersion : 1,
     ),
-    usageByDay:
-      value.usageByDay &&
-      typeof value.usageByDay === 'object' &&
-      !Array.isArray(value.usageByDay)
-        ? value.usageByDay
-        : {},
+    usageByDay: normalizeUsageByDay(value.usageByDay),
     limits:
       value.limits &&
       typeof value.limits === 'object' &&
@@ -85,6 +144,10 @@ function normalizeData(value) {
         ? value.limits
         : {},
     settings: {
+      language:
+        settings.language === 'en' || settings.language === 'uk'
+          ? settings.language
+          : fallback.settings.language,
       trackingEnabled:
         typeof settings.trackingEnabled === 'boolean'
           ? settings.trackingEnabled
@@ -97,9 +160,11 @@ function normalizeData(value) {
 }
 
 module.exports = {
+  CATEGORY_IDS,
   cloneDefaultData,
   getOwn,
   guessCategory,
+  normalizeCategory,
   normalizeData,
   normalizeSiteDomain,
 };

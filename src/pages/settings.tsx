@@ -11,17 +11,22 @@ import {
   Sun,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { DashboardData } from '../types/usage';
 import type {
   PermissionKind,
   Settings as SettingsType,
 } from '../types/settings';
 import { Button } from '../components/ui/button';
+import { LanguageSelect } from '../components/language-select';
+import type { AppLanguage } from '../i18n';
 
 interface SettingsProps {
   data: DashboardData;
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
+  onLanguageChange: (language: AppLanguage) => void;
   onSettingsChange: (patch: Partial<SettingsType>) => void;
   onOpenPermissions: (kind?: PermissionKind) => void;
 }
@@ -88,17 +93,22 @@ function Row({
   );
 }
 
-function activityStatus(data: DashboardData): TrackingStatus {
+type SettingsTFunction = TFunction<readonly ['settings', 'common']>;
+
+function activityStatus(
+  data: DashboardData,
+  t: SettingsTFunction,
+): TrackingStatus {
   if (!data.settings.trackingEnabled)
     return {
-      label: 'Вимкнено',
-      detail: 'Увімкніть загальне відстеження активності.',
+      label: t('status.disabled'),
+      detail: t('status.activityDisabledDetail'),
       tone: 'muted',
     };
   if (!data.tracker.running)
     return {
-      label: 'Не запущено',
-      detail: 'Перезапустіть Limit і перевірте системні дозволи.',
+      label: t('status.notRunning'),
+      detail: t('status.notRunningDetail'),
       tone: 'warning',
     };
   if (
@@ -106,29 +116,32 @@ function activityStatus(data: DashboardData): TrackingStatus {
     data.tracker.permissionState === 'error'
   ) {
     return {
-      label: 'Потребує уваги',
-      detail: 'Перевірте Accessibility у налаштуваннях macOS.',
+      label: t('status.attention'),
+      detail: t('status.accessibilityDetail'),
       tone: 'warning',
     };
   }
   if (data.tracker.permissionState === 'granted')
     return {
-      label: 'Працює',
-      detail: 'Активний застосунок визначається.',
+      label: t('status.working'),
+      detail: t('status.activityWorkingDetail'),
       tone: 'ok',
     };
   return {
-    label: 'Перевіряється',
-    detail: 'Limit очікує наступний активний застосунок.',
+    label: t('status.checking'),
+    detail: t('status.checkingDetail'),
     tone: 'muted',
   };
 }
 
-function websiteStatus(data: DashboardData): TrackingStatus {
+function websiteStatus(
+  data: DashboardData,
+  t: SettingsTFunction,
+): TrackingStatus {
   if (!data.settings.websiteTrackingEnabled) {
     return {
-      label: 'Вимкнено',
-      detail: 'Увімкніть функцію, щоб почати збирати час за доменами.',
+      label: t('status.disabled'),
+      detail: t('status.websitesDisabledDetail'),
       tone: 'muted',
     };
   }
@@ -137,35 +150,37 @@ function websiteStatus(data: DashboardData): TrackingStatus {
     data.tracker.websitePermissionState === 'error'
   ) {
     return {
-      label: 'Потребує уваги',
-      detail: 'Перевірте Accessibility та Automation.',
+      label: t('status.attention'),
+      detail: t('status.permissionsDetail'),
       tone: 'warning',
     };
   }
   if (data.tracker.websitePermissionState === 'unavailable') {
     return {
-      label: 'Домен не отримано',
-      detail: 'Відкрийте Arc і перевірте Accessibility та Automation.',
+      label: t('status.noDomain'),
+      detail: t('status.noDomainDetail'),
       tone: 'warning',
     };
   }
   if (data.tracker.currentApp?.site?.domain) {
     return {
-      label: 'Працює',
-      detail: `Отримано домен ${data.tracker.currentApp.site.domain}.`,
+      label: t('status.working'),
+      detail: t('status.domainReceived', {
+        domain: data.tracker.currentApp.site.domain,
+      }),
       tone: 'ok',
     };
   }
   if (data.tracker.websitePermissionState === 'granted') {
     return {
-      label: 'Доступ підтверджено',
-      detail: 'Домени збиратимуться, коли браузер буде активним.',
+      label: t('status.accessConfirmed'),
+      detail: t('status.accessConfirmedDetail'),
       tone: 'ok',
     };
   }
   return {
-    label: 'Увімкнено · очікує браузер',
-    detail: 'Відкрийте звичайну вкладку Arc, щоб перевірити доступ.',
+    label: t('status.waitingBrowser'),
+    detail: t('status.waitingBrowserDetail'),
     tone: 'muted',
   };
 }
@@ -200,39 +215,39 @@ export function Settings({
   data,
   theme,
   onThemeChange,
+  onLanguageChange,
   onSettingsChange,
   onOpenPermissions,
 }: SettingsProps) {
+  const { t } = useTranslation(['settings', 'common']);
   const websiteTrackingSupported = data.platform === 'darwin';
-  const appTrackingStatus = activityStatus(data);
-  const siteTrackingStatus = websiteStatus(data);
+  const appTrackingStatus = activityStatus(data, t);
+  const siteTrackingStatus = websiteStatus(data, t);
 
   return (
     <div>
       <div className="mb-7">
         <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
-          <Laptop size={13} /> Ваш Limit
+          <Laptop size={13} /> {t('eyebrow')}
         </div>
-        <h1 className="page-title">Налаштування</h1>
-        <p className="page-subtitle">
-          Керуйте трекінгом, запуском у фоні та виглядом застосунку.
-        </p>
+        <h1 className="page-title">{t('title')}</h1>
+        <p className="page-subtitle">{t('subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(290px,.75fr)] gap-4">
         <div className="space-y-4">
           <section className="card overflow-hidden">
             <div className="border-b border-[var(--border)] px-5 py-4">
-              <h2 className="section-title">Загальні</h2>
-              <p className="section-subtitle">Поведінка фонового застосунку</p>
+              <h2 className="section-title">{t('general')}</h2>
+              <p className="section-subtitle">{t('generalSubtitle')}</p>
             </div>
             <Row
               icon={Power}
-              title="Відстеження активності"
-              description="Рахувати лише час активного застосунку, не фонові процеси."
+              title={t('activityTracking')}
+              description={t('activityTrackingDescription')}
             >
               <Toggle
-                label="Відстеження активності"
+                label={t('activityTracking')}
                 checked={data.settings.trackingEnabled}
                 onChange={(trackingEnabled) =>
                   onSettingsChange({ trackingEnabled })
@@ -241,15 +256,15 @@ export function Settings({
             </Row>
             <Row
               icon={Globe2}
-              title="Відстеження сайтів"
+              title={t('websiteTracking')}
               description={
                 websiteTrackingSupported
-                  ? 'Опційно рахувати час за доменами в браузері. Зберігаються лише домени — локально на цьому Mac.'
-                  : 'Функція доступна лише на macOS. Зберігаються тільки домени, без повних адрес і вмісту сторінок.'
+                  ? t('websiteTrackingMac')
+                  : t('websiteTrackingUnsupported')
               }
             >
               <Toggle
-                label="Відстеження сайтів"
+                label={t('websiteTracking')}
                 checked={
                   websiteTrackingSupported &&
                   Boolean(data.settings.websiteTrackingEnabled)
@@ -262,11 +277,11 @@ export function Settings({
             </Row>
             <Row
               icon={Laptop}
-              title="Запуск разом із системою"
-              description="Limit стартуватиме у фоні після входу в обліковий запис."
+              title={t('launchAtLogin')}
+              description={t('launchAtLoginDescription')}
             >
               <Toggle
-                label="Запуск разом із системою"
+                label={t('launchAtLogin')}
                 checked={data.settings.launchAtLogin}
                 onChange={(launchAtLogin) =>
                   onSettingsChange({ launchAtLogin })
@@ -275,10 +290,11 @@ export function Settings({
             </Row>
             <Row
               icon={Bell}
-              title="Поріг бездіяльності"
-              description="Не рахувати час, якщо ви не взаємодієте з компʼютером."
+              title={t('idleThreshold')}
+              description={t('idleThresholdDescription')}
             >
               <select
+                aria-label={t('idleThresholdSelectLabel')}
                 value={data.settings.idleThresholdSeconds}
                 onChange={(event) =>
                   onSettingsChange({
@@ -287,23 +303,24 @@ export function Settings({
                 }
                 className="select-compact"
               >
-                <option value={60}>1 хв</option>
-                <option value={180}>3 хв</option>
-                <option value={300}>5 хв</option>
-                <option value={600}>10 хв</option>
+                {[1, 3, 5, 10].map((minutes) => (
+                  <option key={minutes} value={minutes * 60}>
+                    {t('minutes', { count: minutes })}
+                  </option>
+                ))}
               </select>
             </Row>
           </section>
 
           <section className="card overflow-hidden">
             <div className="border-b border-[var(--border)] px-5 py-4">
-              <h2 className="section-title">Вигляд</h2>
-              <p className="section-subtitle">Оформлення інтерфейсу</p>
+              <h2 className="section-title">{t('appearance')}</h2>
+              <p className="section-subtitle">{t('appearanceSubtitle')}</p>
             </div>
             <Row
               icon={theme === 'dark' ? Moon : Sun}
-              title="Тема"
-              description="Застосовується лише до інтерфейсу Limit."
+              title={t('theme')}
+              description={t('themeDescription')}
             >
               <div className="flex rounded-xl bg-[var(--surface-muted)] p-1">
                 <Button
@@ -312,7 +329,7 @@ export function Settings({
                   onClick={() => onThemeChange('light')}
                   className={`theme-choice ${theme === 'light' ? 'theme-choice-active' : ''}`}
                 >
-                  <Sun size={13} /> Світла
+                  <Sun size={13} /> {t('light')}
                 </Button>
                 <Button
                   variant="ghost"
@@ -320,9 +337,19 @@ export function Settings({
                   onClick={() => onThemeChange('dark')}
                   className={`theme-choice ${theme === 'dark' ? 'theme-choice-active' : ''}`}
                 >
-                  <Moon size={13} /> Темна
+                  <Moon size={13} /> {t('dark')}
                 </Button>
               </div>
+            </Row>
+            <Row
+              icon={Globe2}
+              title={t('common:language.label')}
+              description={t('common:language.description')}
+            >
+              <LanguageSelect
+                value={data.settings.language}
+                onChange={onLanguageChange}
+              />
             </Row>
           </section>
         </div>
@@ -333,16 +360,13 @@ export function Settings({
               <ShieldCheck size={21} />
             </div>
             <h2 className="text-[14px] font-bold text-[var(--text)]">
-              Приватність за замовчуванням
+              {t('privacyTitle')}
             </h2>
             <p className="mt-2 text-[10px] leading-5 text-[var(--muted)]">
-              Історія зберігається локально на цьому компʼютері. Відстеження
-              сайтів вимкнене за замовчуванням; якщо його ввімкнути, Limit
-              зберігає лише домени — без повних URL, вмісту сторінок або історії
-              браузера.
+              {t('privacyDescription')}
             </p>
             <div className="mt-4 flex items-center gap-2 rounded-xl bg-[var(--surface-muted)] px-3 py-2.5 text-[10px] font-semibold text-[var(--muted-strong)]">
-              <HardDrive size={14} /> Локальне сховище
+              <HardDrive size={14} /> {t('localStorage')}
             </div>
           </section>
 
@@ -354,11 +378,10 @@ export function Settings({
                   className="text-[var(--accent-strong)]"
                   aria-hidden="true"
                 />
-                <h2 id="mac-access-title">Доступи macOS</h2>
+                <h2 id="mac-access-title">{t('macAccess')}</h2>
               </div>
               <p className="text-[10px] leading-5 text-[var(--muted)]">
-                Limit не може напряму перевірити всі системні перемикачі. Кнопки
-                нижче завжди доступні для ручної перевірки.
+                {t('macAccessDescription')}
               </p>
 
               {data.platform === 'darwin' && !data.isPackaged && (
@@ -366,10 +389,7 @@ export function Settings({
                   className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-[9px] leading-4 text-[var(--muted-strong)]"
                   role="status"
                 >
-                  Dev-режим: macOS може показувати тут IntelliJ IDEA, Terminal
-                  або Electron — залежно від того, звідки запущено застосунок.
-                  Щоб у списку був саме Limit, запустіть зібрану Limit.app
-                  напряму.
+                  {t('devMode')}
                 </div>
               )}
 
@@ -378,8 +398,8 @@ export function Settings({
                 aria-live="polite"
                 aria-atomic="true"
               >
-                <StatusRow name="Застосунки" status={appTrackingStatus} />
-                <StatusRow name="Сайти" status={siteTrackingStatus} />
+                <StatusRow name={t('apps')} status={appTrackingStatus} />
+                <StatusRow name={t('sites')} status={siteTrackingStatus} />
               </div>
 
               {!data.settings.websiteTrackingEnabled && (
@@ -389,71 +409,64 @@ export function Settings({
                   }
                   className="mt-4 w-full"
                 >
-                  <Globe2 size={14} aria-hidden="true" /> Увімкнути відстеження
-                  сайтів
+                  <Globe2 size={14} aria-hidden="true" /> {t('enableSites')}
                 </Button>
               )}
 
               <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                 <div>
                   <div className="text-[10px] font-bold text-[var(--text)]">
-                    Accessibility
+                    {t('accessibility')}
                   </div>
                   <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
-                    Дозволяє визначати активний застосунок і вкладку
-                    підтримуваного браузера. Системний запит зʼявляється лише
-                    після вашої дії, не у фоновому циклі.
+                    {t('accessibilityDescription')}
                   </p>
                   <Button
                     variant="secondary"
                     onClick={() => onOpenPermissions('accessibility')}
-                    aria-label="Відкрити налаштування macOS Accessibility"
+                    aria-label={t('openAccessibilityLabel')}
                     className="mt-2 w-full"
                   >
-                    Відкрити Accessibility{' '}
+                    {t('openAccessibility')}{' '}
                     <ExternalLink size={12} aria-hidden="true" />
                   </Button>
                 </div>
                 <div>
                   <div className="text-[10px] font-bold text-[var(--text)]">
-                    Automation
+                    {t('automation')}
                   </div>
                   <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
-                    Дозволяє запитувати в Arc лише домен активної вкладки. Limit
-                    зʼявиться у списку після першої фактичної спроби прочитати
-                    вкладку Arc.
+                    {t('automationDescription')}
                   </p>
                   <Button
                     variant="secondary"
                     onClick={() => onOpenPermissions('automation')}
-                    aria-label="Відкрити налаштування macOS Automation"
+                    aria-label={t('openAutomationLabel')}
                     className="mt-2 w-full"
                   >
-                    Відкрити Automation{' '}
+                    {t('openAutomation')}{' '}
                     <ExternalLink size={12} aria-hidden="true" />
                   </Button>
                 </div>
               </div>
               <p className="mt-4 text-[9px] leading-4 text-[var(--muted)]">
-                Після зміни дозволів поверніться в Limit. Якщо macOS не застосує
-                їх одразу, перезапустіть застосунок.
+                {t('permissionsAftercare')}
               </p>
             </section>
           )}
 
           <section className="card p-5">
             <div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--muted)]">
-              Про застосунок
+              {t('about')}
             </div>
             <div className="mt-3 flex items-center justify-between text-[11px]">
               <span className="font-semibold text-[var(--muted-strong)]">
-                Версія
+                {t('version')}
               </span>
               <span className="font-bold text-[var(--text)]">0.1.0 MVP</span>
             </div>
             <p className="mt-4 border-t border-[var(--border)] pt-4 text-[10px] leading-5 text-[var(--muted)]">
-              На Linux/Wayland глобальний трекінг активного вікна недоступний
-              через обмеження системи.
+              {t('waylandNotice')}
             </p>
           </section>
         </div>

@@ -25,10 +25,12 @@ export function LimitApp() {
           view={app.view}
           period={app.period}
           customRange={app.customRange}
+          language={app.language}
           trackingEnabled={app.data?.settings.trackingEnabled}
           theme={app.theme}
           onPeriodChange={app.setPeriod}
           onCustomRangeChange={app.setCustomRange}
+          onLanguageChange={(language) => void app.changeLanguage(language)}
           onThemeToggle={() =>
             app.setTheme((value) => (value === 'light' ? 'dark' : 'light'))
           }
@@ -54,6 +56,7 @@ export function LimitApp() {
             onOpenLimits={() => app.setView('limits')}
             onOpenPermissions={(kind) => void limitApi.openPermissions(kind)}
             onOpenSettings={() => app.setView('settings')}
+            onLanguageChange={(language) => void app.changeLanguage(language)}
             onPauseLimit={(appId) => void app.pauseLimit(appId)}
             onSetLimit={app.openLimitForApp}
             onSettingsChange={(patch) => void app.updateSettings(patch)}

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { formatDuration, formatShortDate } from '../lib/format';
 import type { TimelinePoint } from '../types/usage';
 
@@ -8,6 +9,7 @@ interface ActivityChartProps {
 }
 
 export function ActivityChart({ data, isHourly }: ActivityChartProps) {
+  const { t } = useTranslation('components');
   const max = Math.max(...data.map((point) => point.seconds), 1);
   const visible = data;
   return (
@@ -15,7 +17,7 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
       <div
         className="flex h-[190px] items-end gap-1.5"
         role="group"
-        aria-label="Графік активності"
+        aria-label={t('chart.label')}
       >
         {visible.map((point, index) => {
           const height = Math.max(
@@ -77,7 +79,7 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
                     </div>
                     {isHourly && (
                       <div className="mt-2.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--muted)]">
-                        Застосунки в цю годину
+                        {t('chart.appsThisHour')}
                       </div>
                     )}
                     {isHourly && visibleApps.length > 0 && (
@@ -105,7 +107,9 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
                         {otherSeconds > 0 && (
                           <li className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-1.5 text-[10px]">
                             <span className="font-medium text-[var(--muted)]">
-                              Інші ({apps.length - visibleApps.length})
+                              {t('chart.others', {
+                                count: apps.length - visibleApps.length,
+                              })}
                             </span>
                             <span className="font-semibold tabular-nums text-[var(--text)]">
                               {formatDuration(otherSeconds)}
@@ -117,8 +121,8 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
                     {isHourly && point.seconds > 0 && !visibleApps.length && (
                       <p className="mt-2 text-[10px] leading-4 text-[var(--muted-strong)]">
                         {hasAppBreakdown
-                          ? 'Немає деталізації за застосунками.'
-                          : 'Перезапустіть Limit, щоб завантажити деталізацію застосунків.'}
+                          ? t('chart.noBreakdown')
+                          : t('chart.restartForBreakdown')}
                       </p>
                     )}
                   </div>

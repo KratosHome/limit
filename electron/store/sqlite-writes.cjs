@@ -2,11 +2,12 @@ function writeSettings(database, settings) {
   database
     .prepare(
       `UPDATE settings SET
-        tracking_enabled = ?, website_tracking_enabled = ?,
+        language = ?, tracking_enabled = ?, website_tracking_enabled = ?,
         launch_at_login = ?, idle_threshold_seconds = ?
       WHERE id = 1`,
     )
     .run(
+      settings.language,
       Number(settings.trackingEnabled),
       Number(settings.websiteTrackingEnabled),
       Number(settings.launchAtLogin),

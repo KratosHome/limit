@@ -3,8 +3,23 @@ const { enumerateDays } = require('./date-utils.cjs');
 const {
   getOwn,
   guessCategory,
+  normalizeCategory,
   normalizeSiteDomain,
 } = require('./data-model.cjs');
+
+function compareText(left, right) {
+  const normalizedLeft = String(left).normalize('NFC').toLowerCase();
+  const normalizedRight = String(right).normalize('NFC').toLowerCase();
+  if (normalizedLeft < normalizedRight) return -1;
+  if (normalizedLeft > normalizedRight) return 1;
+  const originalLeft = String(left).normalize('NFC');
+  const originalRight = String(right).normalize('NFC');
+  return originalLeft < originalRight
+    ? -1
+    : originalLeft > originalRight
+      ? 1
+      : 0;
+}
 
 function getKnownApps(data) {
   const apps = new Map();
@@ -15,7 +30,7 @@ function getKnownApps(data) {
         apps.set(entry.id, {
           id: entry.id,
           name: entry.name,
-          category: entry.category || guessCategory(entry.name),
+          category: normalizeCategory(entry.category, entry.name),
           lastSeenAt: entry.lastSeenAt || null,
         });
       }
@@ -31,7 +46,7 @@ function getKnownApps(data) {
       });
     }
   }
-  return [...apps.values()].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+  return [...apps.values()].sort((a, b) => compareText(a.name, b.name));
 }
 
 function getAppIconSource(data, appId) {
@@ -79,7 +94,7 @@ function aggregateUsage(data, from, to) {
     let daySeconds = 0;
     const entries = data.usageByDay[dayKey] || {};
     for (const entry of Object.values(entries)) {
-      const category = entry.category || guessCategory(entry.name);
+      const category = normalizeCategory(entry.category, entry.name);
       const aggregate = appMap.get(entry.id) || {
         id: entry.id,
         name: entry.name,
@@ -88,10 +103,10 @@ function aggregateUsage(data, from, to) {
         launches: 0,
         lastTitle: entry.lastTitle || '',
         lastSeenAt: entry.lastSeenAt || null,
-        isBrowser: category === 'Браузер',
+        isBrowser: category === 'browser',
         sites: new Map(),
       };
-      if (category === 'Браузер') aggregate.isBrowser = true;
+      if (category === 'browser') aggregate.isBrowser = true;
       aggregate.seconds += entry.seconds || 0;
       aggregate.launches += entry.launches || 0;
       if ((entry.lastSeenAt || '') > (aggregate.lastSeenAt || '')) {
@@ -113,7 +128,7 @@ function aggregateUsage(data, from, to) {
   const hourlyTimeline = hourly.map((point, hour) => ({
     ...point,
     apps: [...hourlyApps[hour].values()].sort(
-      (a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name, 'uk'),
+      (a, b) => b.seconds - a.seconds || compareText(a.name, b.name),
     ),
   }));
   return {
@@ -165,7 +180,7 @@ function aggregateHours(hourly, hourlyApps, entry) {
 function mapAppAggregate(limits, entry) {
   const limit = getOwn(limits, entry.id);
   const sites = [...entry.sites.values()]
-    .sort((a, b) => b.seconds - a.seconds || a.domain.localeCompare(b.domain))
+    .sort((a, b) => b.seconds - a.seconds || compareText(a.domain, b.domain))
     .map(({ domain, seconds }) => ({ domain, seconds }));
   const { sites: _siteMap, ...app } = entry;
   return {
