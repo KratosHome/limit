@@ -1,5 +1,5 @@
 import type { AppLimit } from './limits';
-import type { Settings } from './settings';
+import type { NotificationPermission, Settings } from './settings';
 import type { TrackerStatus } from './tracker';
 
 export interface SiteUsage {
@@ -26,6 +26,7 @@ export interface KnownApp {
   name: string;
   category: string;
   lastSeenAt: string | null;
+  sites: string[];
 }
 
 export interface TimelineAppUsage {
@@ -53,6 +54,7 @@ export interface DashboardData {
   storage: { error: string | null; recoveryCreated: boolean };
   platform: string;
   isPackaged: boolean;
+  notificationPermission: NotificationPermission;
   today: string;
   todayUsage: Record<string, number>;
   updatedAt: string;

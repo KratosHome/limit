@@ -3,13 +3,14 @@ function writeSettings(database, settings) {
     .prepare(
       `UPDATE settings SET
         language = ?, tracking_enabled = ?, website_tracking_enabled = ?,
-        launch_at_login = ?, idle_threshold_seconds = ?
+        notifications_enabled = ?, launch_at_login = ?, idle_threshold_seconds = ?
       WHERE id = 1`,
     )
     .run(
       settings.language,
       Number(settings.trackingEnabled),
       Number(settings.websiteTrackingEnabled),
+      Number(settings.notificationsEnabled),
       Number(settings.launchAtLogin),
       settings.idleThresholdSeconds,
     );
@@ -65,10 +66,12 @@ function writeLimit(database, limit) {
   database
     .prepare(
       `INSERT INTO limits (
-        app_id, app_name, daily_limit_minutes, warning_minutes, enabled,
+        app_id, source_app_id, site_domain, app_name, daily_limit_minutes, warning_minutes, enabled,
         last_warning_date, last_reached_date, paused_date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(app_id) DO UPDATE SET
+        source_app_id = excluded.source_app_id,
+        site_domain = excluded.site_domain,
         app_name = excluded.app_name,
         daily_limit_minutes = excluded.daily_limit_minutes,
         warning_minutes = excluded.warning_minutes,
@@ -78,7 +81,9 @@ function writeLimit(database, limit) {
         paused_date = excluded.paused_date`,
     )
     .run(
+      limit.id,
       limit.appId,
+      limit.siteDomain,
       limit.appName,
       limit.dailyLimitMinutes,
       limit.warningMinutes,
@@ -89,22 +94,22 @@ function writeLimit(database, limit) {
     );
 }
 
-function deleteLimit(database, appId) {
-  database.prepare('DELETE FROM limits WHERE app_id = ?').run(appId);
+function deleteLimit(database, limitId) {
+  database.prepare('DELETE FROM limits WHERE app_id = ?').run(limitId);
 }
 
-function writePausedDate(database, appId, pausedDate) {
+function writePausedDate(database, limitId, pausedDate) {
   database
     .prepare('UPDATE limits SET paused_date = ? WHERE app_id = ?')
-    .run(pausedDate, appId);
+    .run(pausedDate, limitId);
 }
 
-function writeNotificationDate(database, appId, kind, day) {
+function writeNotificationDate(database, limitId, kind, day) {
   const statement =
     kind === 'warning'
       ? 'UPDATE limits SET last_warning_date = ? WHERE app_id = ?'
       : 'UPDATE limits SET last_reached_date = ? WHERE app_id = ?';
-  database.prepare(statement).run(day, appId);
+  database.prepare(statement).run(day, limitId);
 }
 
 module.exports = {

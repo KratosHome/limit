@@ -4,10 +4,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Desktop time tracker and app limit manager",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev": "node scripts/start-development.cjs",
+    "dev:ui": "concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
+    "dev:mac:signed": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs",
+    "test:notification:mac": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs --notification-test",
     "build": "tsc --noEmit && vite build",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
@@ -18,9 +24,11 @@
     "preview": "vite preview",
     "start": "electron .",
     "test": "node --test electron/tests/*.test.cjs",
-    "package": "npm run build && electron-builder --dir",
-    "sign:mac:local": "node scripts/sign-macos-local.cjs",
-    "dist": "npm run build && electron-builder",
+    "package": "npm run build && electron-builder --config scripts/electron-builder.base.cjs --dir",
+    "package:mac:local": "node scripts/assert-signed-macos-dev-not-running.cjs && npm run build && electron-builder --config scripts/electron-builder.base.cjs --dir -c.mac.identity=- -c.electronDist=node_modules/electron/dist",
+    "package:win:x64": "npm run build && electron-builder --config scripts/electron-builder.base.cjs --win --x64 --dir",
+    "dist": "npm run build && electron-builder --config scripts/electron-builder.release.cjs",
+    "dist:win:x64": "npm run build && electron-builder --config scripts/electron-builder.release.cjs --win --x64",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -30,68 +38,12 @@
     ],
     "*.{css,html,json,md,yaml,yml}": "prettier --write"
   },
-  "build": {
-    "appId": "ua.limit.desktop",
-    "productName": "Limit",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "!electron/*.test.cjs",
-      "package.json",
-      "!node_modules/@mapbox/**/*",
-      "!node_modules/node-gyp/**/*",
-      "!node_modules/node-addon-api/**/*",
-      "!node_modules/tar/**/*",
-      "!node_modules/cacache/**/*",
-      "!node_modules/make-fetch-happen/**/*"
-    ],
-    "asarUnpack": [
-      "node_modules/get-windows/main",
-      "node_modules/get-windows/lib/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "hardenedRuntime": true,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "extraResources": [
-        {
-          "from": "build/locales",
-          "to": ".",
-          "filter": [
-            "**/InfoPlist.strings"
-          ]
-        }
-      ],
-      "extendInfo": {
-        "NSAppleEventsUsageDescription": "Limit reads only the active tab's domain when website tracking is enabled."
-      }
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "category": "Utility"
-    }
-  },
-  "dependencies": {
-    "get-windows": "^9.3.0",
-    "i18next": "^26.3.6",
-    "lucide-react": "^1.28.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-i18next": "^17.0.11"
-  },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
+    "@electron/fuses": "^2.1.3",
     "@eslint/js": "^10.0.1",
+    "@radix-ui/react-select": "^2.3.7",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -103,10 +55,16 @@
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
+    "get-windows": "^9.3.0",
     "globals": "^17.8.0",
     "husky": "^9.1.7",
+    "i18next": "^26.3.6",
     "lint-staged": "^16.4.0",
+    "lucide-react": "^1.28.0",
     "prettier": "^3.9.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-i18next": "^17.0.11",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.65.0",
@@ -114,6 +72,7 @@
     "wait-on": "^9.1.0"
   },
   "overrides": {
+    "nanoid": "^3.3.17",
     "get-windows": {
       "@mapbox/node-pre-gyp": "^2.0.3",
       "node-gyp": "^12.4.0"

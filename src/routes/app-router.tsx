@@ -18,12 +18,12 @@ interface AppRouterProps {
   onEditLimit: (limit?: AppLimit) => void;
   onOpenActivity: () => void;
   onOpenLimits: () => void;
-  onOpenPermissions: (kind?: PermissionKind) => void;
+  onOpenPermissions: (kind?: PermissionKind) => Promise<boolean>;
   onOpenSettings: () => void;
   onLanguageChange: (language: AppLanguage) => void;
-  onPauseLimit: (appId: string) => void;
+  onPauseLimit: (limitId: string) => void;
   onSetLimit: (app: AppUsage) => void;
-  onSettingsChange: (patch: Partial<SettingsType>) => void;
+  onSettingsChange: (patch: Partial<SettingsType>) => Promise<void>;
   onThemeChange: (theme: 'light' | 'dark') => void;
 }
 

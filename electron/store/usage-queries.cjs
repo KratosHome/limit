@@ -26,27 +26,41 @@ function getKnownApps(data) {
   for (const day of Object.values(data.usageByDay)) {
     for (const entry of Object.values(day)) {
       const previous = apps.get(entry.id);
+      const sites = new Set(previous?.sites || []);
+      for (const site of Object.values(entry.sites || {})) {
+        const domain = normalizeSiteDomain(site?.domain);
+        if (domain) sites.add(domain);
+      }
       if (!previous || (entry.lastSeenAt || '') > (previous.lastSeenAt || '')) {
         apps.set(entry.id, {
           id: entry.id,
           name: entry.name,
           category: normalizeCategory(entry.category, entry.name),
           lastSeenAt: entry.lastSeenAt || null,
+          sites: [...sites],
         });
+      } else if (sites.size !== previous.sites.length) {
+        previous.sites = [...sites];
       }
     }
   }
   for (const limit of Object.values(data.limits)) {
-    if (!apps.has(limit.appId)) {
+    const previous = apps.get(limit.appId);
+    if (!previous) {
       apps.set(limit.appId, {
         id: limit.appId,
         name: limit.appName,
         category: guessCategory(limit.appName),
         lastSeenAt: null,
+        sites: limit.siteDomain ? [limit.siteDomain] : [],
       });
+    } else if (limit.siteDomain && !previous.sites.includes(limit.siteDomain)) {
+      previous.sites.push(limit.siteDomain);
     }
   }
-  return [...apps.values()].sort((a, b) => compareText(a.name, b.name));
+  return [...apps.values()]
+    .map((entry) => ({ ...entry, sites: entry.sites.sort(compareText) }))
+    .sort((a, b) => compareText(a.name, b.name));
 }
 
 function getAppIconSource(data, appId) {
@@ -76,7 +90,11 @@ function getAppIconSource(data, appId) {
       pathLastSeenAt = lastSeenAt;
     }
   }
-  if (!name) name = getOwn(data.limits, appId)?.appName || null;
+  if (!name) {
+    name =
+      Object.values(data.limits).find((limit) => limit.appId === appId)
+        ?.appName || null;
+  }
   return name ? { appId, appName: name, executablePath, tracked } : null;
 }
 
@@ -191,4 +209,9 @@ function mapAppAggregate(limits, entry) {
   };
 }
 
-module.exports = { aggregateUsage, getAppIconSource, getKnownApps };
+module.exports = {
+  aggregateUsage,
+  compareText,
+  getAppIconSource,
+  getKnownApps,
+};

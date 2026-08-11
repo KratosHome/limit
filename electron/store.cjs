@@ -3,7 +3,9 @@ const { AppError, ERROR_CODES } = require('./errors.cjs');
 const { SQLiteStorage } = require('./sqlite-storage.cjs');
 const {
   CATEGORY_IDS,
+  SITE_LIMIT_ID_PREFIX,
   cloneDefaultData,
+  createLimitId,
   getOwn,
   guessCategory,
   normalizeCategory,
@@ -21,6 +23,7 @@ const {
 } = require('./store/sqlite-writes.cjs');
 const {
   aggregateUsage,
+  compareText,
   getAppIconSource,
   getKnownApps,
 } = require('./store/usage-queries.cjs');
@@ -38,6 +41,7 @@ class UsageStore {
       },
     });
     this.data = this.storage.data;
+    this.knownAppsCache = null;
   }
 
   get database() {
@@ -74,6 +78,8 @@ class UsageStore {
       allowed.trackingEnabled = input.trackingEnabled;
     if (typeof input.websiteTrackingEnabled === 'boolean')
       allowed.websiteTrackingEnabled = input.websiteTrackingEnabled;
+    if (typeof input.notificationsEnabled === 'boolean')
+      allowed.notificationsEnabled = input.notificationsEnabled;
     if (typeof input.launchAtLogin === 'boolean')
       allowed.launchAtLogin = input.launchAtLogin;
     if (Number.isFinite(input.idleThresholdSeconds)) {
@@ -107,8 +113,8 @@ class UsageStore {
       date,
       hour,
     );
-    const site = updateSiteUsage(
-      entry,
+    const site = createUpdatedSite(
+      entry.sites,
       this.data.settings.websiteTrackingEnabled ? sample.site?.domain : null,
       seconds,
       date,
@@ -116,20 +122,71 @@ class UsageStore {
     this.transaction(() =>
       writeUsageEntry(this.database, dayKey, entry, hour, site),
     );
+    if (site) {
+      Object.defineProperty(entry.sites, site.domain, {
+        configurable: true,
+        enumerable: true,
+        value: site,
+        writable: true,
+      });
+    }
     Object.defineProperty(day, sample.id, {
       configurable: true,
       enumerable: true,
       value: entry,
       writable: true,
     });
+    this.updateKnownAppCache(entry, site);
   }
 
   getTodayUsage(appId, date = new Date()) {
     return getOwn(this.data.usageByDay[localDay(date)], appId)?.seconds || 0;
   }
 
+  getTodaySiteUsage(appId, siteDomain, date = new Date()) {
+    const domain = normalizeSiteDomain(siteDomain);
+    if (!domain) return 0;
+    const entry = getOwn(this.data.usageByDay[localDay(date)], appId);
+    return getOwn(entry?.sites, domain)?.seconds || 0;
+  }
+
+  getTodayLimitUsage(limit, date = new Date()) {
+    return limit?.siteDomain
+      ? this.getTodaySiteUsage(limit.appId, limit.siteDomain, date)
+      : this.getTodayUsage(limit?.appId, date);
+  }
+
   getKnownApps() {
-    return getKnownApps(this.data);
+    if (!this.knownAppsCache) {
+      this.knownAppsCache = new Map(
+        getKnownApps(this.data).map((entry) => [
+          entry.id,
+          { ...entry, sites: new Set(entry.sites) },
+        ]),
+      );
+    }
+    return [...this.knownAppsCache.values()]
+      .map((entry) => ({
+        ...entry,
+        sites: [...entry.sites].sort(compareText),
+      }))
+      .sort((left, right) => compareText(left.name, right.name));
+  }
+
+  updateKnownAppCache(entry, site) {
+    if (!this.knownAppsCache) return;
+    const cached = this.knownAppsCache.get(entry.id) || {
+      id: entry.id,
+      name: entry.name,
+      category: entry.category,
+      lastSeenAt: null,
+      sites: new Set(),
+    };
+    cached.name = entry.name;
+    cached.category = entry.category;
+    cached.lastSeenAt = entry.lastSeenAt;
+    if (site) cached.sites.add(site.domain);
+    this.knownAppsCache.set(entry.id, cached);
   }
 
   getAppIconSource(appId) {
@@ -141,30 +198,33 @@ class UsageStore {
   }
 
   saveLimit(input) {
-    const limit = createLimit(input, getOwn(this.data.limits, input?.appId));
+    const limitId = createLimitId(input?.appId, input?.siteDomain);
+    const limit = createLimit(input, getOwn(this.data.limits, limitId));
     this.transaction(() => writeLimit(this.database, limit));
-    Object.defineProperty(this.data.limits, input.appId, {
+    Object.defineProperty(this.data.limits, limit.id, {
       configurable: true,
       enumerable: true,
       value: limit,
       writable: true,
     });
+    this.knownAppsCache = null;
     return { ...limit };
   }
 
-  deleteLimit(appId) {
-    this.transaction(() => deleteLimitRecord(this.database, appId));
-    delete this.data.limits[appId];
+  deleteLimit(limitId) {
+    this.transaction(() => deleteLimitRecord(this.database, limitId));
+    delete this.data.limits[limitId];
+    this.knownAppsCache = null;
   }
 
-  pauseLimitToday(appId, date = new Date()) {
-    const limit = getOwn(this.data.limits, appId);
+  pauseLimitToday(limitId, date = new Date()) {
+    const limit = getOwn(this.data.limits, limitId);
     if (!limit) return null;
     const updatedLimit = { ...limit, pausedDate: localDay(date) };
     this.transaction(() =>
-      writePausedDate(this.database, appId, updatedLimit.pausedDate),
+      writePausedDate(this.database, limitId, updatedLimit.pausedDate),
     );
-    Object.defineProperty(this.data.limits, appId, {
+    Object.defineProperty(this.data.limits, limitId, {
       configurable: true,
       enumerable: true,
       value: updatedLimit,
@@ -173,19 +233,19 @@ class UsageStore {
     return { ...updatedLimit };
   }
 
-  markLimitNotification(appId, kind, date = new Date()) {
-    const limit = getOwn(this.data.limits, appId);
+  markLimitNotification(limitId, kind, date = new Date()) {
+    const limit = getOwn(this.data.limits, limitId);
     if (!limit) return;
     const key = kind === 'warning' ? 'lastWarningDate' : 'lastReachedDate';
     const day = localDay(date);
     this.transaction(() =>
-      writeNotificationDate(this.database, appId, kind, day),
+      writeNotificationDate(this.database, limitId, kind, day),
     );
     limit[key] = day;
   }
 
-  getLimit(appId) {
-    const limit = getOwn(this.data.limits, appId);
+  getLimit(limitId) {
+    const limit = getOwn(this.data.limits, limitId);
     return limit ? { ...limit } : null;
   }
 
@@ -199,18 +259,23 @@ class UsageStore {
     const todayAggregate = this.aggregate(today, today);
     const previousTo = addDays(from, -1);
     const previousFrom = addDays(previousTo, -(current.days.length - 1));
+    const limits = this.getLimits();
     return {
       ...current,
       previousTotalSeconds: this.aggregate(previousFrom, previousTo)
         .totalSeconds,
-      limits: this.getLimits(),
+      limits,
       knownApps: this.getKnownApps(),
       settings: this.getSettings(),
       storage: this.getStorageStatus(),
       today,
-      todayUsage: Object.fromEntries(
-        todayAggregate.apps.map((entry) => [entry.id, entry.seconds]),
-      ),
+      todayUsage: Object.fromEntries([
+        ...todayAggregate.apps.map((entry) => [entry.id, entry.seconds]),
+        ...limits.map((limit) => [
+          limit.id,
+          this.getTodayLimitUsage(limit, now),
+        ]),
+      ]),
       updatedAt: new Date().toISOString(),
     };
   }
@@ -219,7 +284,16 @@ class UsageStore {
 function createUpdatedEntry(day, sample, seconds, isLaunch, date, hour) {
   const existingEntry = getOwn(day, sample.id);
   const entry = existingEntry
-    ? JSON.parse(JSON.stringify(existingEntry))
+    ? {
+        ...existingEntry,
+        hourly: { ...(existingEntry.hourly || {}) },
+        sites:
+          existingEntry.sites &&
+          typeof existingEntry.sites === 'object' &&
+          !Array.isArray(existingEntry.sites)
+            ? existingEntry.sites
+            : {},
+      }
     : {
         id: sample.id,
         name: sample.name,
@@ -248,19 +322,13 @@ function createUpdatedEntry(day, sample, seconds, isLaunch, date, hour) {
   return entry;
 }
 
-function updateSiteUsage(entry, rawDomain, seconds, date) {
+function createUpdatedSite(sites, rawDomain, seconds, date) {
   const domain = normalizeSiteDomain(rawDomain);
   if (!domain) return null;
-  if (
-    !entry.sites ||
-    typeof entry.sites !== 'object' ||
-    Array.isArray(entry.sites)
-  )
-    entry.sites = {};
-  const existingSite = getOwn(entry.sites, domain);
+  const existingSite = getOwn(sites, domain);
   const site =
     existingSite && typeof existingSite === 'object'
-      ? existingSite
+      ? { ...existingSite }
       : { domain, seconds: 0, lastSeenAt: null };
   site.domain = domain;
   site.seconds = Math.max(
@@ -268,20 +336,33 @@ function updateSiteUsage(entry, rawDomain, seconds, date) {
     (Number.isFinite(site.seconds) ? site.seconds : 0) + seconds,
   );
   site.lastSeenAt = date.toISOString();
-  Object.defineProperty(entry.sites, domain, {
-    configurable: true,
-    enumerable: true,
-    value: site,
-    writable: true,
-  });
   return site;
+}
+
+function hasControlCharacter(value) {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint <= 31 || codePoint === 127) return true;
+  }
+  return false;
 }
 
 function createLimit(input, previous = {}) {
   previous ||= {};
-  if (!input?.appId || !input?.appName)
+  if (
+    typeof input?.appId !== 'string' ||
+    !input.appId.trim() ||
+    typeof input?.appName !== 'string' ||
+    !input.appName.trim()
+  )
     throw new AppError(ERROR_CODES.SELECT_APP);
-  if (String(input.appId).length > 512 || String(input.appName).length > 120)
+  if (
+    input.appId.length > 512 ||
+    input.appName.length > 120 ||
+    hasControlCharacter(input.appId) ||
+    hasControlCharacter(input.appName) ||
+    input.appId.startsWith(SITE_LIMIT_ID_PREFIX)
+  )
     throw new AppError(ERROR_CODES.INVALID_APP_DATA);
   const dailyLimitMinutes = Math.round(Number(input.dailyLimitMinutes));
   if (
@@ -295,18 +376,32 @@ function createLimit(input, previous = {}) {
     Math.max(0, Math.round(Number(input.warningMinutes) || 0)),
     Math.max(0, dailyLimitMinutes - 1),
   );
-  const thresholdChanged =
+  const siteDomain = normalizeSiteDomain(input.siteDomain);
+  if (input.siteDomain && !siteDomain)
+    throw new AppError(ERROR_CODES.INVALID_APP_DATA);
+  const id = createLimitId(input.appId, siteDomain);
+  const dailyThresholdChanged =
     previous.dailyLimitMinutes !== undefined &&
     previous.dailyLimitMinutes !== dailyLimitMinutes;
+  const warningThresholdChanged =
+    previous.warningMinutes !== undefined &&
+    previous.warningMinutes !== warningMinutes;
   return {
     ...previous,
+    id,
     appId: input.appId,
     appName: input.appName,
+    siteDomain,
     dailyLimitMinutes,
     warningMinutes,
     enabled: input.enabled !== false,
-    lastWarningDate: thresholdChanged ? null : previous.lastWarningDate || null,
-    lastReachedDate: thresholdChanged ? null : previous.lastReachedDate || null,
+    lastWarningDate:
+      dailyThresholdChanged || warningThresholdChanged
+        ? null
+        : previous.lastWarningDate || null,
+    lastReachedDate: dailyThresholdChanged
+      ? null
+      : previous.lastReachedDate || null,
     pausedDate: previous.pausedDate || null,
   };
 }

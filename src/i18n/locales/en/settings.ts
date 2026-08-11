@@ -15,6 +15,35 @@ export default {
   launchAtLogin: 'Launch at login',
   launchAtLoginDescription:
     'Limit will start in the background after you sign in.',
+  notifications: 'Limit notifications',
+  notificationsDescription:
+    'Show system banners and in-app messages when limits are approaching or reached.',
+  notificationsDisabledDescription: 'Limit will not show limit warnings.',
+  notificationsReadyDescription:
+    'Enabled in Limit and allowed by the operating system.',
+  notificationsPermissionRequiredDescription:
+    'Enabled in Limit, but macOS is blocking banners. Open System Settings with the button beside the switch.',
+  notificationsPermissionPendingDescription:
+    'Waiting for macOS permission to show notification banners.',
+  notificationsCheckingDescription:
+    'Limit is checking the macOS notification permission.',
+  notificationsCheckingWindowsDescription:
+    'Limit is checking whether Windows allows notifications for this app.',
+  notificationsSuppressedWindowsDescription:
+    'Windows is blocking notifications for Limit. Check the system notification settings.',
+  notificationsUnsupportedDescription:
+    'System banners are unavailable on this system or in this launch mode.',
+  settingsUpdateError: 'Could not update settings. Please try again.',
+  notificationsUpdateError:
+    'Could not update notification settings. Please try again.',
+  notificationsOpenSettingsError:
+    'Could not open system notification settings. Please try again.',
+  permissionsOpenError:
+    'Could not open system permission settings. Please try again.',
+  openNotificationSettings: 'macOS notification settings',
+  openNotificationSettingsLabel: 'Open macOS notification settings',
+  openWindowsNotificationSettings: 'Windows notification settings',
+  openWindowsNotificationSettingsLabel: 'Open Windows notification settings',
   idleThreshold: 'Idle threshold',
   idleThresholdDescription:
     'Do not count time while you are away from the computer.',

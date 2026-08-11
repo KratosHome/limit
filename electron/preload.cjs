@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('limitApi', {
     if (typeof callback !== 'function') return () => undefined;
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('limits:notification', listener);
+    ipcRenderer.send('limits:renderer-ready');
     return () => ipcRenderer.removeListener('limits:notification', listener);
   },
 });

@@ -1,9 +1,18 @@
-import { BellRing, Check, Clock3, Info, Trash2, X } from 'lucide-react';
+import { BellRing, Check, Clock3, Globe2, Info, Trash2, X } from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppIcon } from './app-icon';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 import { formatMinutes } from '../lib/format';
 import { translateError } from '../i18n/helpers';
 import type { AppLimit, LimitInput } from '../types/limits';
@@ -15,7 +24,7 @@ interface LimitModalProps {
   initialAppId?: string | null;
   onClose: () => void;
   onSave: (input: LimitInput) => Promise<void>;
-  onDelete: (appId: string) => Promise<void>;
+  onDelete: (limitId: string) => Promise<void>;
 }
 
 const presets = [30, 60, 120, 180];
@@ -31,6 +40,7 @@ export function LimitModal({
   const { t } = useTranslation(['modals', 'common', 'errors']);
   const defaultAppId = existing?.appId || initialAppId || apps[0]?.id || '';
   const [appId, setAppId] = useState(defaultAppId);
+  const [siteDomain, setSiteDomain] = useState(existing?.siteDomain || '');
   const [minutes, setMinutes] = useState(existing?.dailyLimitMinutes || 60);
   const [warningMinutes, setWarningMinutes] = useState(
     existing?.warningMinutes ?? 10,
@@ -40,11 +50,29 @@ export function LimitModal({
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLFormElement>(null);
   const onCloseRef = useRef(onClose);
+  const savingRef = useRef(saving);
   onCloseRef.current = onClose;
+  savingRef.current = saving;
   const selectedApp = useMemo(
     () => apps.find((app) => app.id === appId),
     [appId, apps],
   );
+  const selectedSites = selectedApp?.sites ?? [];
+  const canSelectSite = Boolean(
+    selectedApp && (selectedApp.category === 'browser' || selectedSites.length),
+  );
+  const safeMinutes = Number.isFinite(minutes) ? Math.round(minutes) : 0;
+  const effectiveWarningMinutes = Math.min(
+    Math.max(0, warningMinutes),
+    Math.max(0, safeMinutes - 1),
+  );
+  const warningOptions = [
+    ...new Set([
+      0,
+      ...[5, 10, 15].filter((value) => value < safeMinutes),
+      effectiveWarningMinutes,
+    ]),
+  ].sort((left, right) => left - right);
 
   useEffect(() => {
     const previousFocus =
@@ -62,6 +90,7 @@ export function LimitModal({
     });
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        if (event.defaultPrevented || savingRef.current) return;
         event.preventDefault();
         onCloseRef.current();
       }
@@ -92,11 +121,12 @@ export function LimitModal({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (saving) return;
     if (!selectedApp) {
       setError(t('errors:selectApp'));
       return;
     }
-    if (minutes < 1 || minutes > 1440) {
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
       setError(t('errors:invalidDuration'));
       return;
     }
@@ -106,8 +136,9 @@ export function LimitModal({
       await onSave({
         appId: selectedApp.id,
         appName: selectedApp.name,
+        siteDomain: siteDomain || null,
         dailyLimitMinutes: minutes,
-        warningMinutes: Math.min(warningMinutes, Math.max(0, minutes - 1)),
+        warningMinutes: effectiveWarningMinutes,
         enabled,
       });
     } catch (reason) {
@@ -124,7 +155,7 @@ export function LimitModal({
     if (!existing || saving) return;
     setSaving(true);
     try {
-      await onDelete(existing.appId);
+      await onDelete(existing.id || existing.appId);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -139,7 +170,7 @@ export function LimitModal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-5 backdrop-blur-[2px]"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !saving) onClose();
       }}
     >
       <form
@@ -149,9 +180,9 @@ export function LimitModal({
         aria-modal="true"
         aria-labelledby="limit-modal-title"
         aria-busy={saving}
-        className="modal-panel w-full max-w-[510px] overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_28px_80px_rgba(15,23,42,.22)]"
+        className="modal-panel flex max-h-[calc(100vh-2.5rem)] w-full max-w-[510px] flex-col overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--surface)] shadow-[0_28px_80px_rgba(15,23,42,.22)]"
       >
-        <div className="flex items-start justify-between border-b border-[var(--border)] px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between border-b border-[var(--border)] px-6 py-5">
           <div>
             <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--accent-strong)]">
               <Clock3 size={13} /> {t('modals:limit.eyebrow')}
@@ -167,45 +198,114 @@ export function LimitModal({
             variant="icon"
             size="icon"
             onClick={onClose}
+            disabled={saving}
             aria-label={t('common:actions.close')}
           >
             <X size={18} />
           </Button>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        <div className="flex min-h-0 flex-col gap-5 overflow-y-auto px-6 py-5">
           <div>
             <label htmlFor="limit-app" className="field-label">
               {t('modals:limit.app')}
             </label>
-            <div className="relative mt-2">
-              {selectedApp && (
-                <div className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2">
-                  <AppIcon
-                    id={selectedApp.id}
-                    name={selectedApp.name}
-                    size="sm"
-                  />
-                </div>
-              )}
-              <select
-                id="limit-app"
-                disabled={Boolean(existing)}
-                value={appId}
-                onChange={(event) => setAppId(event.target.value)}
-                className="field-input h-14 w-full pl-14 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {!apps.length && (
-                  <option value="">{t('modals:limit.noApps')}</option>
-                )}
-                {apps.map((app) => (
-                  <option key={app.id} value={app.id}>
-                    {app.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Select
+              disabled={saving || Boolean(existing) || !apps.length}
+              value={appId || undefined}
+              onValueChange={(value) => {
+                setAppId(value);
+                setSiteDomain('');
+              }}
+            >
+              <SelectTrigger id="limit-app" className="mt-2">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  {selectedApp && (
+                    <AppIcon
+                      id={selectedApp.id}
+                      name={selectedApp.name}
+                      size="sm"
+                    />
+                  )}
+                  <SelectValue placeholder={t('modals:limit.noApps')} />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel className="sr-only">
+                    {t('modals:limit.app')}
+                  </SelectLabel>
+                  {apps.map((app) => (
+                    <SelectItem
+                      key={app.id}
+                      value={app.id}
+                      textValue={app.name}
+                    >
+                      <span className="truncate">{app.name}</span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
+
+          {canSelectSite && (
+            <div>
+              <label htmlFor="limit-site" className="field-label">
+                {t('modals:limit.site')}
+              </label>
+              <Select
+                disabled={saving || Boolean(existing)}
+                value={siteDomain || '__browser__'}
+                onValueChange={(value) =>
+                  setSiteDomain(value === '__browser__' ? '' : value)
+                }
+              >
+                <SelectTrigger id="limit-site" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel className="sr-only">
+                      {t('modals:limit.site')}
+                    </SelectLabel>
+                    <SelectItem
+                      value="__browser__"
+                      textValue={t('modals:limit.wholeBrowser')}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        {selectedApp && (
+                          <AppIcon
+                            id={selectedApp.id}
+                            name={selectedApp.name}
+                            size="sm"
+                          />
+                        )}
+                        {t('modals:limit.wholeBrowser')}
+                      </span>
+                    </SelectItem>
+                    {selectedSites.map((domain) => (
+                      <SelectItem
+                        key={domain}
+                        value={domain}
+                        textValue={domain}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <Globe2 aria-hidden="true" />
+                          <span className="truncate">{domain}</span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <p className="mt-1.5 text-[9px] leading-4 text-[var(--muted)]">
+                {selectedSites.length
+                  ? t('modals:limit.siteHint')
+                  : t('modals:limit.noTrackedSites')}
+              </p>
+            </div>
+          )}
 
           <div>
             <label htmlFor="limit-duration" className="field-label">
@@ -218,6 +318,8 @@ export function LimitModal({
                   variant="secondary"
                   size="none"
                   onClick={() => setMinutes(preset)}
+                  aria-pressed={minutes === preset}
+                  disabled={saving}
                   className={`rounded-xl px-2 py-2.5 text-[11px] ${minutes === preset ? 'border-[var(--accent)] bg-[var(--nav-active)] text-[var(--accent-strong)]' : 'bg-transparent'}`}
                 >
                   {formatMinutes(preset)}
@@ -233,6 +335,7 @@ export function LimitModal({
                 max="480"
                 step="5"
                 value={Math.min(minutes, 480)}
+                disabled={saving}
                 onChange={(event) => setMinutes(Number(event.target.value))}
                 className="limit-range min-w-0 flex-1"
               />
@@ -244,6 +347,7 @@ export function LimitModal({
                   min="1"
                   max="1440"
                   value={minutes}
+                  disabled={saving}
                   onChange={(event) => setMinutes(Number(event.target.value))}
                 />
                 <span className="ml-1 text-[10px] font-semibold text-[var(--muted)]">
@@ -259,20 +363,29 @@ export function LimitModal({
                 <BellRing size={15} className="text-[var(--accent-strong)]" />{' '}
                 {t('modals:limit.warning')}
               </span>
-              <select
-                value={warningMinutes}
-                onChange={(event) =>
-                  setWarningMinutes(Number(event.target.value))
-                }
-                className="w-full bg-transparent text-[11px] font-semibold text-[var(--muted-strong)] outline-none"
+              <Select
+                disabled={saving}
+                value={String(effectiveWarningMinutes)}
+                onValueChange={(value) => setWarningMinutes(Number(value))}
               >
-                <option value={0}>{t('modals:limit.noWarning')}</option>
-                {[5, 10, 15].map((value) => (
-                  <option key={value} value={value}>
-                    {t('modals:limit.warningBefore', { count: value })}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-7 border-0 bg-transparent px-0 shadow-none focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel className="sr-only">
+                      {t('modals:limit.warning')}
+                    </SelectLabel>
+                    {warningOptions.map((value) => (
+                      <SelectItem key={value} value={String(value)}>
+                        {value === 0
+                          ? t('modals:limit.noWarning')
+                          : t('modals:limit.warningBefore', { count: value })}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </label>
             <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
               <span>
@@ -286,10 +399,11 @@ export function LimitModal({
               <input
                 type="checkbox"
                 checked={enabled}
+                disabled={saving}
                 onChange={(event) => setEnabled(event.target.checked)}
                 className="peer sr-only"
               />
-              <span className="relative h-6 w-11 rounded-full bg-[var(--toggle-off)] transition peer-checked:bg-[var(--accent)] after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition peer-checked:after:translate-x-5" />
+              <span className="relative h-6 w-11 rounded-full bg-[var(--toggle-off)] transition peer-checked:bg-[var(--accent)] peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[var(--surface)] after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-sm after:transition peer-checked:after:translate-x-5" />
             </label>
           </div>
 
@@ -304,7 +418,7 @@ export function LimitModal({
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-muted)] px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--surface-muted)] px-6 py-4">
           <div>
             {existing && (
               <Button
@@ -319,7 +433,7 @@ export function LimitModal({
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={onClose}>
+            <Button variant="secondary" onClick={onClose} disabled={saving}>
               {t('common:actions.cancel')}
             </Button>
             <Button type="submit" disabled={saving || !apps.length}>

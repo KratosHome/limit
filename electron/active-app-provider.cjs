@@ -18,11 +18,11 @@ function websiteTrackingErrorKind(error) {
 }
 
 function packageDirectory() {
+  if (typeof process.resourcesPath === 'string') {
+    const packagedDirectory = path.join(process.resourcesPath, 'get-windows');
+    if (fs.existsSync(packagedDirectory)) return packagedDirectory;
+  }
   return path.dirname(require.resolve('get-windows'));
-}
-
-function unpackedPath(filePath) {
-  return filePath.replace(/([\\/])app\.asar([\\/])/, '$1app.asar.unpacked$2');
 }
 
 function windowsBindingPriority(directoryName, platform, arch, napiVersion) {
@@ -81,7 +81,7 @@ async function loadActiveWindowProvider(
   const root = packageDirectory();
 
   if (platform === 'darwin') {
-    const binary = unpackedPath(path.join(root, 'main'));
+    const binary = path.join(root, 'main');
     const appOnlyArguments = [
       '--no-accessibility-permission',
       '--no-screen-recording-permission',
@@ -125,7 +125,7 @@ async function loadActiveWindowProvider(
   }
 
   if (platform === 'win32') {
-    const bindingRoot = unpackedPath(path.join(root, 'lib', 'binding'));
+    const bindingRoot = path.join(root, 'lib', 'binding');
     const bindingPath = findWindowsBinding(bindingRoot);
     if (!bindingPath)
       throw new Error('Native foreground-window binding is missing');
@@ -139,7 +139,6 @@ async function loadActiveWindowProvider(
 module.exports = {
   findWindowsBinding,
   loadActiveWindowProvider,
-  unpackedPath,
   websiteTrackingErrorKind,
   windowsBindingPriority,
 };

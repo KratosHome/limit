@@ -10,6 +10,15 @@ const messages = {
     warningMessage: (remaining) => `Залишилося ${remaining} хв.`,
     reachedMessage: (used, limit) =>
       `Сьогодні використано ${used} хв. із ${limit} хв.`,
+    notificationRequestTitle: 'Сповіщення Limit',
+    notificationRequestBody:
+      'Дозвольте сповіщення, щоб Limit попереджав про завершення часу.',
+    notificationPermissionTitle: 'Системні сповіщення вимкнено',
+    notificationPermissionMessage: 'Увімкніть сповіщення для Limit',
+    notificationPermissionDetail:
+      'Без цього macOS не покаже попередження про наближення або завершення ліміту.',
+    openNotificationSettings: 'Відкрити налаштування',
+    later: 'Пізніше',
   },
   en: {
     trayTooltip: 'Limit — time tracker',
@@ -21,6 +30,15 @@ const messages = {
     reachedTitle: (appName) => `${appName} reached its limit`,
     warningMessage: (remaining) => `${remaining} min remaining.`,
     reachedMessage: (used, limit) => `${used} of ${limit} min used today.`,
+    notificationRequestTitle: 'Limit notifications',
+    notificationRequestBody:
+      'Allow notifications so Limit can warn you when time runs out.',
+    notificationPermissionTitle: 'System notifications are disabled',
+    notificationPermissionMessage: 'Enable notifications for Limit',
+    notificationPermissionDetail:
+      'Without permission, macOS cannot show warnings when a limit is approaching or reached.',
+    openNotificationSettings: 'Open Settings',
+    later: 'Later',
   },
 };
 

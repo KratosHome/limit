@@ -46,6 +46,6 @@ export function translateError(
 ): string {
   const key = errorKeys[message];
   return key
-    ? i18n.t(`errors:${key}`)
-    : message || i18n.t(`errors:${fallbackKey}`);
+    ? String(i18n.t(`errors:${key}`))
+    : message || String(i18n.t(`errors:${fallbackKey}`));
 }

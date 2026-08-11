@@ -9,8 +9,9 @@ import {
   Power,
   ShieldCheck,
   Sun,
+  TimerReset,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { DashboardData } from '../types/usage';
@@ -27,8 +28,8 @@ interface SettingsProps {
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
   onLanguageChange: (language: AppLanguage) => void;
-  onSettingsChange: (patch: Partial<SettingsType>) => void;
-  onOpenPermissions: (kind?: PermissionKind) => void;
+  onSettingsChange: (patch: Partial<SettingsType>) => Promise<void>;
+  onOpenPermissions: (kind?: PermissionKind) => Promise<boolean>;
 }
 
 type TrackingStatus = {
@@ -42,11 +43,13 @@ function Toggle({
   disabled = false,
   onChange,
   label,
+  describedBy,
 }: {
   checked: boolean;
   disabled?: boolean;
   onChange: (value: boolean) => void;
   label: string;
+  describedBy?: string;
 }) {
   return (
     <Button
@@ -55,6 +58,7 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={describedBy}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative h-6 w-11 rounded-full p-0 transition hover:bg-[var(--toggle-off)] ${checked ? 'bg-[var(--accent)] hover:bg-[var(--accent)]' : 'bg-[var(--toggle-off)]'}`}
@@ -70,11 +74,15 @@ function Row({
   icon: Icon,
   title,
   description,
+  descriptionId,
+  descriptionLive = false,
   children,
 }: {
   icon: typeof Bell;
   title: string;
   description: string;
+  descriptionId?: string;
+  descriptionLive?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -84,7 +92,11 @@ function Row({
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-bold text-[var(--text)]">{title}</div>
-        <p className="mt-0.5 text-[10px] leading-4 text-[var(--muted)]">
+        <p
+          id={descriptionId}
+          aria-live={descriptionLive ? 'polite' : undefined}
+          className="mt-0.5 text-[10px] leading-4 text-[var(--muted)]"
+        >
           {description}
         </p>
       </div>
@@ -94,6 +106,45 @@ function Row({
 }
 
 type SettingsTFunction = TFunction<readonly ['settings', 'common']>;
+
+function notificationDescription(data: DashboardData, t: SettingsTFunction) {
+  if (!data.settings.notificationsEnabled)
+    return t('notificationsDisabledDescription');
+  const permission = data.notificationPermission;
+  if (permission.authorizationStatus === 'unsupported')
+    return t('notificationsUnsupportedDescription');
+  if (data.platform === 'win32') {
+    if (permission.authorizationStatus === 'unknown')
+      return t('notificationsCheckingWindowsDescription');
+    if (
+      permission.authorizationStatus === 'suppressed' ||
+      permission.authorizationStatus === 'denied' ||
+      !permission.canPresent
+    )
+      return t('notificationsSuppressedWindowsDescription');
+    return t('notificationsReadyDescription');
+  }
+  if (data.platform !== 'darwin') return t('notificationsDescription');
+
+  if (
+    permission.authorizationStatus === 'denied' ||
+    ((permission.authorizationStatus === 'authorized' ||
+      permission.authorizationStatus === 'provisional') &&
+      !permission.canPresent)
+  ) {
+    return t('notificationsPermissionRequiredDescription');
+  }
+  if (
+    (permission.authorizationStatus === 'authorized' ||
+      permission.authorizationStatus === 'provisional') &&
+    permission.canPresent
+  ) {
+    return t('notificationsReadyDescription');
+  }
+  if (permission.authorizationStatus === 'not-determined')
+    return t('notificationsPermissionPendingDescription');
+  return t('notificationsCheckingDescription');
+}
 
 function activityStatus(
   data: DashboardData,
@@ -223,6 +274,55 @@ export function Settings({
   const websiteTrackingSupported = data.platform === 'darwin';
   const appTrackingStatus = activityStatus(data, t);
   const siteTrackingStatus = websiteStatus(data, t);
+  const notificationDescriptionId = useId();
+  const [settingsPending, setSettingsPending] = useState(false);
+  const [settingsError, setSettingsError] = useState('');
+  const [notificationsError, setNotificationsError] = useState('');
+
+  async function changeSetting(patch: Partial<SettingsType>) {
+    if (settingsPending) return;
+    setSettingsPending(true);
+    setSettingsError('');
+    try {
+      await onSettingsChange(patch);
+    } catch {
+      setSettingsError(t('settingsUpdateError'));
+    } finally {
+      setSettingsPending(false);
+    }
+  }
+
+  async function changeNotifications(notificationsEnabled: boolean) {
+    if (settingsPending) return;
+    setSettingsPending(true);
+    setSettingsError('');
+    setNotificationsError('');
+    try {
+      await onSettingsChange({ notificationsEnabled });
+    } catch {
+      setNotificationsError(t('notificationsUpdateError'));
+    } finally {
+      setSettingsPending(false);
+    }
+  }
+
+  async function openPermissions(kind: PermissionKind) {
+    if (settingsPending) return;
+    setSettingsPending(true);
+    setSettingsError('');
+    if (kind === 'notifications') setNotificationsError('');
+    try {
+      if (!(await onOpenPermissions(kind))) throw new Error('unsupported');
+    } catch {
+      if (kind === 'notifications') {
+        setNotificationsError(t('notificationsOpenSettingsError'));
+      } else {
+        setSettingsError(t('permissionsOpenError'));
+      }
+    } finally {
+      setSettingsPending(false);
+    }
+  }
 
   return (
     <div>
@@ -241,6 +341,14 @@ export function Settings({
               <h2 className="section-title">{t('general')}</h2>
               <p className="section-subtitle">{t('generalSubtitle')}</p>
             </div>
+            {settingsError && (
+              <p
+                role="alert"
+                className="border-b border-[var(--border)] px-5 py-3 text-[10px] font-semibold text-rose-500"
+              >
+                {settingsError}
+              </p>
+            )}
             <Row
               icon={Power}
               title={t('activityTracking')}
@@ -249,8 +357,9 @@ export function Settings({
               <Toggle
                 label={t('activityTracking')}
                 checked={data.settings.trackingEnabled}
+                disabled={settingsPending}
                 onChange={(trackingEnabled) =>
-                  onSettingsChange({ trackingEnabled })
+                  void changeSetting({ trackingEnabled })
                 }
               />
             </Row>
@@ -269,9 +378,9 @@ export function Settings({
                   websiteTrackingSupported &&
                   Boolean(data.settings.websiteTrackingEnabled)
                 }
-                disabled={!websiteTrackingSupported}
+                disabled={!websiteTrackingSupported || settingsPending}
                 onChange={(websiteTrackingEnabled) =>
-                  onSettingsChange({ websiteTrackingEnabled })
+                  void changeSetting({ websiteTrackingEnabled })
                 }
               />
             </Row>
@@ -283,21 +392,65 @@ export function Settings({
               <Toggle
                 label={t('launchAtLogin')}
                 checked={data.settings.launchAtLogin}
+                disabled={settingsPending}
                 onChange={(launchAtLogin) =>
-                  onSettingsChange({ launchAtLogin })
+                  void changeSetting({ launchAtLogin })
                 }
               />
             </Row>
             <Row
               icon={Bell}
+              title={t('notifications')}
+              descriptionId={notificationDescriptionId}
+              descriptionLive
+              description={
+                notificationsError || notificationDescription(data, t)
+              }
+            >
+              <div className="flex items-center gap-2">
+                {(data.platform === 'darwin' || data.platform === 'win32') &&
+                  data.isPackaged && (
+                    <Button
+                      variant="icon"
+                      size="icon"
+                      onClick={() => void openPermissions('notifications')}
+                      disabled={settingsPending}
+                      aria-label={t(
+                        data.platform === 'win32'
+                          ? 'openWindowsNotificationSettingsLabel'
+                          : 'openNotificationSettingsLabel',
+                      )}
+                      title={t(
+                        data.platform === 'win32'
+                          ? 'openWindowsNotificationSettings'
+                          : 'openNotificationSettings',
+                      )}
+                    >
+                      <ExternalLink size={14} aria-hidden="true" />
+                    </Button>
+                  )}
+                <Toggle
+                  label={t('notifications')}
+                  describedBy={notificationDescriptionId}
+                  checked={data.settings.notificationsEnabled}
+                  disabled={settingsPending}
+                  onChange={(notificationsEnabled) =>
+                    void changeNotifications(notificationsEnabled)
+                  }
+                />
+              </div>
+            </Row>
+            <Row
+              icon={TimerReset}
               title={t('idleThreshold')}
               description={t('idleThresholdDescription')}
             >
               <select
                 aria-label={t('idleThresholdSelectLabel')}
                 value={data.settings.idleThresholdSeconds}
+                disabled={settingsPending}
                 onChange={(event) =>
-                  onSettingsChange({
+                  void changeSetting({
                     idleThresholdSeconds: Number(event.target.value),
                   })
                 }
@@ -405,8 +558,9 @@ export function Settings({
               {!data.settings.websiteTrackingEnabled && (
                 <Button
                   onClick={() =>
-                    onSettingsChange({ websiteTrackingEnabled: true })
+                    void changeSetting({ websiteTrackingEnabled: true })
                   }
+                  disabled={settingsPending}
                   className="mt-4 w-full"
                 >
                   <Globe2 size={14} aria-hidden="true" /> {t('enableSites')}
@@ -423,7 +577,8 @@ export function Settings({
                   </p>
                   <Button
                     variant="secondary"
-                    onClick={() => onOpenPermissions('accessibility')}
+                    onClick={() => void openPermissions('accessibility')}
+                    disabled={settingsPending}
                     aria-label={t('openAccessibilityLabel')}
                     className="mt-2 w-full"
                   >
@@ -440,7 +595,8 @@ export function Settings({
                   </p>
                   <Button
                     variant="secondary"
-                    onClick={() => onOpenPermissions('automation')}
+                    onClick={() => void openPermissions('automation')}
+                    disabled={settingsPending}
                     aria-label={t('openAutomationLabel')}
                     className="mt-2 w-full"
                   >

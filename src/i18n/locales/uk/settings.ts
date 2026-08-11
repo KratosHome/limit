@@ -15,6 +15,36 @@ export default {
   launchAtLogin: 'Запуск разом із системою',
   launchAtLoginDescription:
     'Limit стартуватиме у фоні після входу в обліковий запис.',
+  notifications: 'Сповіщення про ліміти',
+  notificationsDescription:
+    'Показувати системні банери й повідомлення в Limit про наближення та досягнення лімітів.',
+  notificationsDisabledDescription:
+    'Limit не показуватиме попередження про ліміти.',
+  notificationsReadyDescription:
+    'Увімкнено в Limit і дозволено операційною системою.',
+  notificationsPermissionRequiredDescription:
+    'Увімкнено в Limit, але macOS блокує банери. Відкрийте системні налаштування кнопкою поруч.',
+  notificationsPermissionPendingDescription:
+    'Очікується системний дозвіл macOS на показ банерів.',
+  notificationsCheckingDescription: 'Limit перевіряє системний дозвіл macOS.',
+  notificationsCheckingWindowsDescription:
+    'Limit перевіряє, чи Windows дозволяє сповіщення для цього застосунку.',
+  notificationsSuppressedWindowsDescription:
+    'Windows блокує сповіщення для Limit. Перевірте системні налаштування сповіщень.',
+  notificationsUnsupportedDescription:
+    'Системні банери недоступні в цій системі або режимі запуску.',
+  settingsUpdateError: 'Не вдалося змінити налаштування. Спробуйте ще раз.',
+  notificationsUpdateError:
+    'Не вдалося змінити налаштування сповіщень. Спробуйте ще раз.',
+  notificationsOpenSettingsError:
+    'Не вдалося відкрити системні налаштування сповіщень. Спробуйте ще раз.',
+  permissionsOpenError:
+    'Не вдалося відкрити системні налаштування дозволів. Спробуйте ще раз.',
+  openNotificationSettings: 'Налаштування сповіщень macOS',
+  openNotificationSettingsLabel: 'Відкрити налаштування сповіщень macOS',
+  openWindowsNotificationSettings: 'Налаштування сповіщень Windows',
+  openWindowsNotificationSettingsLabel:
+    'Відкрити налаштування сповіщень Windows',
   idleThreshold: 'Поріг бездіяльності',
   idleThresholdDescription:
     'Не рахувати час, якщо ви не взаємодієте з компʼютером.',

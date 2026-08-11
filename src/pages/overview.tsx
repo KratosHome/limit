@@ -290,7 +290,7 @@ export function Overview({
         {enabledLimits.length ? (
           <div className="grid grid-cols-3 gap-3">
             {enabledLimits.slice(0, 3).map((limit) => {
-              const used = data.todayUsage[limit.appId] || 0;
+              const used = data.todayUsage[limit.id] || 0;
               const percentage = Math.min(
                 100,
                 (used / (limit.dailyLimitMinutes * 60)) * 100,
@@ -301,7 +301,7 @@ export function Overview({
                 <Button
                   variant="card"
                   size="none"
-                  key={limit.appId}
+                  key={limit.id}
                   onClick={() => onEditLimit(limit)}
                   className="p-4"
                 >
@@ -309,8 +309,13 @@ export function Overview({
                     <AppIcon id={limit.appId} name={limit.appName} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[12px] font-bold text-[var(--text)]">
-                        {limit.appName}
+                        {limit.siteDomain || limit.appName}
                       </div>
+                      {limit.siteDomain && (
+                        <div className="truncate text-[9px] font-medium text-[var(--muted)]">
+                          {limit.appName}
+                        </div>
+                      )}
                       <div
                         className={`mt-0.5 text-[10px] font-semibold ${exceeded ? 'text-rose-500' : close ? 'text-amber-600' : 'text-emerald-600'}`}
                       >

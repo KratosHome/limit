@@ -18,7 +18,7 @@ interface LimitsProps {
   data: DashboardData;
   onAdd: () => void;
   onEdit: (limit: AppLimit) => void;
-  onPause: (appId: string) => void;
+  onPause: (limitId: string) => void;
 }
 
 export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
@@ -33,7 +33,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
     (limit) =>
       limit.enabled &&
       limit.pausedDate !== data.today &&
-      (data.todayUsage[limit.appId] || 0) >= limit.dailyLimitMinutes * 60,
+      (data.todayUsage[limit.id] || 0) >= limit.dailyLimitMinutes * 60,
   ).length;
 
   return (
@@ -96,7 +96,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
       {data.limits.length ? (
         <div className="grid grid-cols-2 gap-4">
           {data.limits.map((limit) => {
-            const used = data.todayUsage[limit.appId] || 0;
+            const used = data.todayUsage[limit.id] || 0;
             const percentage = Math.min(
               100,
               (used / (limit.dailyLimitMinutes * 60)) * 100,
@@ -123,19 +123,29 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
               ok: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10',
             };
             return (
-              <article key={limit.appId} className="card p-5">
+              <article key={limit.id} className="card p-5">
                 <div className="flex items-start gap-3">
                   <AppIcon id={limit.appId} name={limit.appName} size="lg" />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <h2 className="truncate text-[14px] font-bold text-[var(--text)]">
-                        {limit.appName}
-                      </h2>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h2 className="truncate text-[14px] font-bold text-[var(--text)]">
+                          {limit.siteDomain || limit.appName}
+                        </h2>
+                        {limit.siteDomain && (
+                          <p className="mt-0.5 truncate text-[9px] font-medium text-[var(--muted)]">
+                            {limit.appName}
+                          </p>
+                        )}
+                      </div>
                       <Button
                         variant="icon"
                         size="icon"
                         onClick={() => onEdit(limit)}
-                        aria-label={t('editLabel', { app: limit.appName })}
+                        aria-label={t('editLabel', {
+                          app: limit.siteDomain || limit.appName,
+                        })}
+                        className="shrink-0"
                       >
                         <MoreHorizontal size={17} />
                       </Button>
@@ -184,7 +194,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                     <Button
                       variant="link"
                       size="none"
-                      onClick={() => onPause(limit.appId)}
+                      onClick={() => onPause(limit.id)}
                     >
                       {t('pauseToday')}
                     </Button>

@@ -54,12 +54,12 @@ export function LimitApp() {
             }
             onOpenActivity={() => app.setView('activity')}
             onOpenLimits={() => app.setView('limits')}
-            onOpenPermissions={(kind) => void limitApi.openPermissions(kind)}
+            onOpenPermissions={(kind) => limitApi.openPermissions(kind)}
             onOpenSettings={() => app.setView('settings')}
             onLanguageChange={(language) => void app.changeLanguage(language)}
             onPauseLimit={(appId) => void app.pauseLimit(appId)}
             onSetLimit={app.openLimitForApp}
-            onSettingsChange={(patch) => void app.updateSettings(patch)}
+            onSettingsChange={app.updateSettings}
             onThemeChange={app.setTheme}
           />
         )}

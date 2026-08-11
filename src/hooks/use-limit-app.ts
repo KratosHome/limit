@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { limitApi } from '../api';
 import { offsetDay, rangeForPeriod, toDayKey } from '../lib/format';
 import i18n, { normalizeLanguage, type AppLanguage } from '../i18n';
@@ -37,34 +37,57 @@ export function useLimitApp() {
   const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [toast, setToast] = useState<LimitNotification | null>(null);
+  const dashboardRequestId = useRef(0);
   const range = useMemo(
     () => rangeForPeriod(period, customRange),
     [customRange, period],
   );
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
 
-  const loadDashboard = useCallback(
-    async (showLoader = false) => {
-      if (showLoader) setLoading(true);
-      try {
-        const next = await limitApi.getDashboard(range);
-        setData(next);
-        setError('');
-      } catch (reason) {
-        setError(
-          reason instanceof Error
-            ? translateError(reason.message, 'dashboardLoad')
-            : i18n.t('errors:dashboardLoad'),
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [range],
-  );
+  const loadDashboard = useCallback(async (showLoader = false) => {
+    const requestedRange = rangeRef.current;
+    const requestId = ++dashboardRequestId.current;
+    const isCurrentRequest = () =>
+      requestId === dashboardRequestId.current &&
+      requestedRange.from === rangeRef.current.from &&
+      requestedRange.to === rangeRef.current.to;
+    if (showLoader) setLoading(true);
+    try {
+      const next = await limitApi.getDashboard(requestedRange);
+      if (!isCurrentRequest()) return;
+      setData({
+        ...next,
+        notificationPermission: next.notificationPermission ?? {
+          authorizationStatus: 'unknown',
+          canPresent: false,
+        },
+        knownApps: next.knownApps.map((app) => ({
+          ...app,
+          sites: Array.isArray(app.sites) ? app.sites : [],
+        })),
+        limits: next.limits.map((limit) => ({
+          ...limit,
+          id: limit.id || limit.appId,
+          siteDomain: limit.siteDomain || null,
+        })),
+      });
+      setError('');
+    } catch (reason) {
+      if (!isCurrentRequest()) return;
+      setError(
+        reason instanceof Error
+          ? translateError(reason.message, 'dashboardLoad')
+          : i18n.t('errors:dashboardLoad'),
+      );
+    } finally {
+      if (isCurrentRequest()) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void loadDashboard(true);
-  }, [loadDashboard]);
+  }, [loadDashboard, range]);
   useEffect(() => {
     const unsubscribeData = limitApi.onDataUpdated(() => void loadDashboard());
     const unsubscribeNotifications = limitApi.onLimitNotification(
@@ -125,7 +148,9 @@ export function useLimitApp() {
 
   function openLimitForApp(app: AppUsage) {
     const existing =
-      data?.limits.find((limit) => limit.appId === app.id) || null;
+      data?.limits.find(
+        (limit) => limit.appId === app.id && !limit.siteDomain,
+      ) || null;
     setModal(existing ? { existing } : { initialAppId: app.id });
   }
 
@@ -135,14 +160,14 @@ export function useLimitApp() {
     await loadDashboard();
   }
 
-  async function deleteLimit(appId: string) {
-    await limitApi.deleteLimit(appId);
+  async function deleteLimit(limitId: string) {
+    await limitApi.deleteLimit(limitId);
     setModal(null);
     await loadDashboard();
   }
 
-  async function pauseLimit(appId: string) {
-    await limitApi.pauseLimitToday(appId);
+  async function pauseLimit(limitId: string) {
+    await limitApi.pauseLimitToday(limitId);
     await loadDashboard();
   }
 

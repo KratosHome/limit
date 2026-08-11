@@ -1,6 +1,8 @@
 export interface AppLimit {
+  id: string;
   appId: string;
   appName: string;
+  siteDomain: string | null;
   dailyLimitMinutes: number;
   warningMinutes: number;
   enabled: boolean;
@@ -12,6 +14,7 @@ export interface AppLimit {
 export interface LimitInput {
   appId: string;
   appName: string;
+  siteDomain?: string | null;
   dailyLimitMinutes: number;
   warningMinutes: number;
   enabled: boolean;

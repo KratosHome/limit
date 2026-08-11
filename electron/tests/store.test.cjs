@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
+const { DatabaseSync } = require('node:sqlite');
 const { UsageStore } = require('../store.cjs');
 
 function createStore(t) {
@@ -72,6 +73,9 @@ test('getKnownApps exposes only renderer-safe application metadata', (t) => {
         seconds: 42,
         launches: 3,
         hourly: {},
+        sites: {
+          'example.com': { domain: 'example.com', seconds: 42 },
+        },
         lastSeenAt: '2026-08-02T10:00:00.000Z',
       },
     },
@@ -81,8 +85,36 @@ test('getKnownApps exposes only renderer-safe application metadata', (t) => {
     {
       id: 'com.example.App',
       name: 'Example',
-      category: 'Інше',
+      category: 'other',
       lastSeenAt: '2026-08-02T10:00:00.000Z',
+      sites: ['example.com'],
+    },
+  ]);
+});
+
+test('getKnownApps cache updates incrementally with the active site', (t) => {
+  const store = createStore(t);
+  store.updateSettings({ websiteTrackingEnabled: true });
+  assert.deepEqual(store.getKnownApps(), []);
+
+  store.recordSample(
+    {
+      id: 'com.example.Browser',
+      name: 'Example Chrome',
+      site: { domain: 'example.com' },
+    },
+    2,
+    true,
+    new Date(2026, 7, 2, 10, 0, 0),
+  );
+
+  assert.deepEqual(store.getKnownApps(), [
+    {
+      id: 'com.example.Browser',
+      name: 'Example Chrome',
+      category: 'browser',
+      lastSeenAt: new Date(2026, 7, 2, 10, 0, 0).toISOString(),
+      sites: ['example.com'],
     },
   ]);
 });
@@ -130,7 +162,11 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   const databasePath = path.join(directory, 'usage-data.sqlite3');
   const date = new Date(2026, 7, 5, 10, 30, 0);
   const firstStore = new UsageStore(databasePath);
-  firstStore.updateSettings({ language: 'en', websiteTrackingEnabled: true });
+  firstStore.updateSettings({
+    language: 'en',
+    websiteTrackingEnabled: true,
+    notificationsEnabled: false,
+  });
   firstStore.recordSample(
     {
       id: 'com.example.Browser',
@@ -150,6 +186,14 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
     warningMinutes: 5,
     enabled: true,
   });
+  const siteLimit = firstStore.saveLimit({
+    appId: 'com.example.Browser',
+    appName: 'Example Browser',
+    siteDomain: 'example.com',
+    dailyLimitMinutes: 15,
+    warningMinutes: 5,
+    enabled: true,
+  });
   firstStore.close();
 
   const reopenedStore = new UsageStore(databasePath);
@@ -159,6 +203,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   });
 
   assert.equal(reopenedStore.getSettings().websiteTrackingEnabled, true);
+  assert.equal(reopenedStore.getSettings().notificationsEnabled, false);
   assert.equal(reopenedStore.getSettings().language, 'en');
   assert.equal(reopenedStore.getTodayUsage('com.example.Browser', date), 125);
   assert.deepEqual(
@@ -169,9 +214,13 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
     reopenedStore.getLimit('com.example.Browser').dailyLimitMinutes,
     30,
   );
+  assert.deepEqual(reopenedStore.getLimit(siteLimit.id), {
+    ...siteLimit,
+  });
+  assert.equal(reopenedStore.getTodayLimitUsage(siteLimit, date), 125);
   assert.equal(
     reopenedStore.database.prepare('PRAGMA user_version').get().user_version,
-    2,
+    7,
   );
   assert.deepEqual(
     reopenedStore.database
@@ -181,6 +230,11 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
     [
       { version: 1, name: 'initial_schema' },
       { version: 2, name: 'settings_language' },
+      { version: 3, name: 'category_ids' },
+      { version: 4, name: 'site_limits' },
+      { version: 5, name: 'retry_native_notifications' },
+      { version: 6, name: 'notification_preference' },
+      { version: 7, name: 'canonical_site_limit_ids' },
     ],
   );
   assert.equal(
@@ -203,6 +257,240 @@ test('new databases use the supplied system language', (t) => {
   });
 
   assert.equal(store.getSettings().language, 'en');
+  assert.equal(store.getSettings().notificationsEnabled, true);
+  store.updateSettings({ notificationsEnabled: 'false' });
+  assert.equal(store.getSettings().notificationsEnabled, true);
+});
+
+test('migration adds site targets while preserving existing app limits', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const originalStore = new UsageStore(databasePath);
+  originalStore.saveLimit({
+    appId: 'com.example.Browser',
+    appName: 'Example Browser',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  originalStore.close();
+
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase.exec(`
+    ALTER TABLE limits DROP COLUMN site_domain;
+    ALTER TABLE limits DROP COLUMN source_app_id;
+    ALTER TABLE settings DROP COLUMN notifications_enabled;
+    DELETE FROM schema_migrations WHERE version >= 4;
+    PRAGMA user_version = 3;
+  `);
+  legacyDatabase.close();
+
+  const migratedStore = new UsageStore(databasePath);
+  t.after(() => {
+    migratedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.deepEqual(migratedStore.getLimit('com.example.Browser'), {
+    id: 'com.example.Browser',
+    appId: 'com.example.Browser',
+    appName: 'Example Browser',
+    siteDomain: null,
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+    lastWarningDate: null,
+    lastReachedDate: null,
+    pausedDate: null,
+  });
+  assert.equal(
+    migratedStore.database.prepare('PRAGMA user_version').get().user_version,
+    7,
+  );
+});
+
+test('migration retries notifications marked by the previous delivery path', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const originalStore = new UsageStore(databasePath);
+  originalStore.saveLimit({
+    appId: 'com.example.Editor',
+    appName: 'Example Editor',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  originalStore.markLimitNotification(
+    'com.example.Editor',
+    'warning',
+    new Date(2026, 7, 9),
+  );
+  originalStore.markLimitNotification(
+    'com.example.Editor',
+    'reached',
+    new Date(2026, 7, 9),
+  );
+  originalStore.close();
+
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase.exec(`
+    ALTER TABLE settings DROP COLUMN notifications_enabled;
+    DELETE FROM schema_migrations WHERE version >= 5;
+    PRAGMA user_version = 4;
+  `);
+  legacyDatabase.close();
+
+  const migratedStore = new UsageStore(databasePath);
+  t.after(() => {
+    migratedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(
+    migratedStore.getLimit('com.example.Editor').lastWarningDate,
+    null,
+  );
+  assert.equal(
+    migratedStore.getLimit('com.example.Editor').lastReachedDate,
+    null,
+  );
+  assert.equal(
+    migratedStore.database.prepare('PRAGMA user_version').get().user_version,
+    7,
+  );
+});
+
+test('migration enables the notification preference for existing users', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const originalStore = new UsageStore(databasePath);
+  originalStore.close();
+
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase.exec(`
+    ALTER TABLE settings DROP COLUMN notifications_enabled;
+    DELETE FROM schema_migrations WHERE version >= 6;
+    PRAGMA user_version = 5;
+  `);
+  legacyDatabase.close();
+
+  const migratedStore = new UsageStore(databasePath);
+  t.after(() => {
+    migratedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  assert.equal(migratedStore.getSettings().notificationsEnabled, true);
+  assert.equal(
+    migratedStore.database.prepare('PRAGMA user_version').get().user_version,
+    7,
+  );
+});
+
+test('migration replaces legacy site-limit ids with bounded canonical ids', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const originalStore = new UsageStore(databasePath);
+  const siteLimit = originalStore.saveLimit({
+    appId: 'com.example.Browser',
+    appName: 'Example Browser',
+    siteDomain: 'example.com',
+    dailyLimitMinutes: 20,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  originalStore.close();
+
+  const legacyId = 'site:["com.example.Browser","example.com"]';
+  const legacyDatabase = new DatabaseSync(databasePath);
+  legacyDatabase
+    .prepare('UPDATE limits SET app_id = ? WHERE app_id = ?')
+    .run(legacyId, siteLimit.id);
+  legacyDatabase.exec(`
+    DELETE FROM schema_migrations WHERE version >= 7;
+    PRAGMA user_version = 6;
+  `);
+  legacyDatabase.close();
+
+  const migratedStore = new UsageStore(databasePath);
+  t.after(() => {
+    migratedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+
+  const [migratedLimit] = migratedStore.getLimits();
+  assert.match(migratedLimit.id, /^limit-site:v1:[A-Za-z0-9_-]{43}$/);
+  assert.equal(migratedLimit.id, siteLimit.id);
+  assert.equal(migratedStore.getLimit(legacyId), null);
+});
+
+test('site-limit ids stay bounded and cannot collide with app ids', (t) => {
+  const store = createStore(t);
+  const longAppId = `C:\\${'a'.repeat(509)}`;
+  const siteLimit = store.saveLimit({
+    appId: longAppId,
+    appName: 'Long Browser',
+    siteDomain: 'example.com',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  });
+
+  assert.ok(siteLimit.id.length < 64);
+  assert.equal(store.pauseLimitToday(siteLimit.id)?.id, siteLimit.id);
+  store.deleteLimit(siteLimit.id);
+  assert.equal(store.getLimit(siteLimit.id), null);
+
+  assert.throws(
+    () =>
+      store.saveLimit({
+        appId: siteLimit.id,
+        appName: 'Reserved id',
+        dailyLimitMinutes: 30,
+        warningMinutes: 5,
+        enabled: true,
+      }),
+    (error) => error?.code === 'invalidAppData',
+  );
+});
+
+test('limit input requires safe string application metadata', (t) => {
+  const store = createStore(t);
+  const input = {
+    appName: 'Example',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  };
+
+  assert.throws(
+    () => store.saveLimit({ ...input, appId: { value: 'object' } }),
+    (error) => error?.code === 'selectApp',
+  );
+  assert.throws(
+    () => store.saveLimit({ ...input, appId: 'com.example.App\n' }),
+    (error) => error?.code === 'invalidAppData',
+  );
+});
+
+test('changing warning time resets only the warning delivery marker', (t) => {
+  const store = createStore(t);
+  const input = {
+    appId: 'com.example.Editor',
+    appName: 'Example Editor',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  };
+  store.saveLimit(input);
+  const date = new Date(2026, 7, 9);
+  store.markLimitNotification(input.appId, 'warning', date);
+  store.markLimitNotification(input.appId, 'reached', date);
+
+  const updated = store.saveLimit({ ...input, warningMinutes: 10 });
+
+  assert.equal(updated.lastWarningDate, null);
+  assert.equal(updated.lastReachedDate, '2026-08-09');
 });
 
 test('imports the legacy JSON once and keeps it as a backup', (t) => {
@@ -245,6 +533,7 @@ test('imports the legacy JSON once and keeps it as a backup', (t) => {
   });
 
   assert.equal(store.getSettings().trackingEnabled, false);
+  assert.equal(store.getSettings().notificationsEnabled, true);
   assert.equal(
     store.getTodayUsage('com.example.Editor', new Date(2026, 7, 4)),
     600,

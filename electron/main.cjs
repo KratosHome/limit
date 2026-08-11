@@ -1,8 +1,10 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -20,6 +22,14 @@ const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const { UsageStore, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { desktopMessages, resolveDesktopLanguage } = require('./i18n.cjs');
+const {
+  isLimitNotificationDue,
+  notificationKey,
+  pruneDayScopedCache,
+} = require('./limit-notification-rules.cjs');
+const {
+  getWindowsNotificationSetting,
+} = require('./windows-notification-state.cjs');
 
 let mainWindow = null;
 let tray = null;
@@ -32,19 +42,59 @@ let screenLocked = false;
 let suspended = false;
 const pendingAlerts = new Set();
 const notificationRetryAt = new Map();
+const inAppAlertsShown = new Set();
+const queuedInAppAlerts = new Map();
+const deliveredAlerts = new Set();
+const activeSystemNotifications = new Map();
+const limitNotificationRevisions = new Map();
+let nextLimitNotificationRevision = 0;
+let notificationAuthorizationPromise = null;
+let notificationAuthorizationGeneration = 0;
+let notificationPermissionPrompt = null;
+let macOSNotificationPermissionModule = null;
+let notificationSettingsDialogShown = false;
+let notificationSettingsDialogPromise = null;
+let notificationPermissionSnapshot = {
+  authorizationStatus: 'unknown',
+  canPresent: false,
+};
+let notificationPermissionCheckedAt = 0;
+let notificationPermissionRefreshPromise = null;
+let windowsNotificationSettingsPromise = null;
+let limitNotificationRendererReady = false;
 const appIconCache = new Map();
 const appIconMissCache = new Map();
 const appIconPending = new Map();
 const MAX_APP_ICON_CACHE_ENTRIES = 256;
 const MAX_PENDING_APP_ICONS = 128;
+const isSignedDevelopment =
+  process.platform === 'darwin' &&
+  app.isPackaged &&
+  process.env.LIMIT_SIGNED_DEVELOPMENT === '1';
+const shouldTestSystemNotification =
+  isSignedDevelopment && process.env.LIMIT_SYSTEM_NOTIFICATION_TEST === '1';
+const notificationTestId = /^\d{1,12}$/.test(
+  process.env.LIMIT_SYSTEM_NOTIFICATION_TEST_ID || '',
+)
+  ? process.env.LIMIT_SYSTEM_NOTIFICATION_TEST_ID
+  : null;
 
-app.setPath(
-  'userData',
-  path.join(
-    app.getPath('appData'),
-    app.isPackaged ? 'Limit' : 'Limit Development',
-  ),
-);
+if (shouldTestSystemNotification && notificationTestId) {
+  app.setPath(
+    'userData',
+    path.join(
+      app.getPath('temp'),
+      `Limit Notification Test ${notificationTestId}`,
+    ),
+  );
+} else {
+  const userDataDirectory = app.isPackaged
+    ? isSignedDevelopment
+      ? 'Limit Development'
+      : 'Limit'
+    : 'Limit UI Development';
+  app.setPath('userData', path.join(app.getPath('appData'), userDataDirectory));
+}
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -62,6 +112,7 @@ function showMainWindow() {
 }
 
 function createWindow() {
+  limitNotificationRendererReady = false;
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 840,
@@ -94,6 +145,12 @@ function createWindow() {
     void mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
 
+  mainWindow.webContents.on('did-start-loading', () => {
+    limitNotificationRendererReady = false;
+  });
+  mainWindow.webContents.on('render-process-gone', () => {
+    limitNotificationRendererReady = false;
+  });
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
@@ -198,31 +255,435 @@ function broadcastUpdate(payload = {}) {
     mainWindow.webContents.send('data:updated', payload);
 }
 
-function notifyLimit(limit, kind, usedSeconds) {
-  const usedMinutes = Math.floor(usedSeconds / 60);
-  const isWarning = kind === 'warning';
-  const t = desktopMessages(store?.getSettings().language);
-  const payload = {
-    kind,
-    appId: limit.appId,
-    appName: limit.appName,
-    title: isWarning
-      ? t.warningTitle(limit.appName)
-      : t.reachedTitle(limit.appName),
-    message: isWarning
-      ? t.warningMessage(Math.max(1, limit.dailyLimitMinutes - usedMinutes))
-      : t.reachedMessage(usedMinutes, limit.dailyLimitMinutes),
-  };
+function resolveMacOSNotificationPermissionHelper() {
+  if (process.platform !== 'darwin' || !app.isPackaged) return null;
+  try {
+    const contentsPath = fs.realpathSync(
+      path.resolve(process.resourcesPath, '..'),
+    );
+    const helperPath = path.join(
+      contentsPath,
+      'MacOS',
+      'LimitNotificationPermission.node',
+    );
+    if (
+      !fs.existsSync(helperPath) ||
+      !fs.lstatSync(helperPath).isFile() ||
+      fs.lstatSync(helperPath).isSymbolicLink()
+    ) {
+      return null;
+    }
+    const realHelperPath = fs.realpathSync(helperPath);
+    if (!realHelperPath.startsWith(`${contentsPath}${path.sep}`)) return null;
+    return realHelperPath;
+  } catch {
+    return null;
+  }
+}
 
-  if (mainWindow && !mainWindow.isDestroyed())
-    mainWindow.webContents.send('limits:notification', payload);
-  if (!Notification.isSupported()) return Promise.resolve(false);
+async function getMacOSNotificationSettings() {
+  const helperPath = resolveMacOSNotificationPermissionHelper();
+  if (!helperPath)
+    throw new Error('macOS notification permission helper is unavailable');
+
+  try {
+    if (!macOSNotificationPermissionModule) {
+      macOSNotificationPermissionModule = require(helperPath);
+    }
+    if (
+      typeof macOSNotificationPermissionModule.getNotificationSettings !==
+      'function'
+    ) {
+      throw new Error('missing getNotificationSettings export');
+    }
+    const settings =
+      await macOSNotificationPermissionModule.getNotificationSettings();
+    const authorizationStatuses = new Set([
+      'not-determined',
+      'denied',
+      'authorized',
+      'provisional',
+    ]);
+    const notificationSettings = new Set([
+      'not-supported',
+      'disabled',
+      'enabled',
+    ]);
+    if (
+      settings?.bundleIdentifier !== 'ua.limit.desktop' ||
+      !authorizationStatuses.has(settings.authorizationStatus) ||
+      !notificationSettings.has(settings.alertSetting) ||
+      !notificationSettings.has(settings.notificationCenterSetting) ||
+      !notificationSettings.has(settings.soundSetting)
+    ) {
+      throw new Error('unexpected helper response');
+    }
+    updateMacOSNotificationPermissionSnapshot(settings);
+    return settings;
+  } catch (error) {
+    notificationPermissionCheckedAt = Date.now();
+    throw new Error(
+      `Unable to read macOS notification permission: ${error instanceof Error ? error.message : 'unknown error'}`,
+      { cause: error },
+    );
+  }
+}
+
+function canPresentMacOSNotification(settings) {
+  return (
+    (settings.authorizationStatus === 'authorized' ||
+      settings.authorizationStatus === 'provisional') &&
+    settings.alertSetting === 'enabled'
+  );
+}
+
+function setNotificationPermissionSnapshot(nextSnapshot) {
+  const changed =
+    nextSnapshot.authorizationStatus !==
+      notificationPermissionSnapshot.authorizationStatus ||
+    nextSnapshot.canPresent !== notificationPermissionSnapshot.canPresent;
+  notificationPermissionSnapshot = nextSnapshot;
+  notificationPermissionCheckedAt = Date.now();
+  if (changed) broadcastUpdate({ reason: 'notification-permission' });
+}
+
+function updateMacOSNotificationPermissionSnapshot(settings) {
+  setNotificationPermissionSnapshot({
+    authorizationStatus: settings.authorizationStatus,
+    canPresent: canPresentMacOSNotification(settings),
+  });
+}
+
+async function getWindowsNotificationSettings() {
+  if (
+    process.platform !== 'win32' ||
+    !app.isPackaged ||
+    !Notification.isSupported()
+  ) {
+    throw new Error('Windows notifications are unavailable');
+  }
+  const setting = await getWindowsNotificationSetting();
+  const snapshot = {
+    authorizationStatus: setting.canPresent ? 'authorized' : 'suppressed',
+    canPresent: setting.canPresent,
+  };
+  setNotificationPermissionSnapshot(snapshot);
+  return snapshot;
+}
+
+function refreshWindowsNotificationSettings({ force = false } = {}) {
+  const cacheDuration = 5 * 60_000;
+  if (
+    !force &&
+    notificationPermissionCheckedAt > 0 &&
+    Date.now() - notificationPermissionCheckedAt < cacheDuration
+  ) {
+    return Promise.resolve({ ...notificationPermissionSnapshot });
+  }
+  if (windowsNotificationSettingsPromise)
+    return windowsNotificationSettingsPromise;
+  const settingsPromise = getWindowsNotificationSettings()
+    .catch((error) => {
+      notificationPermissionCheckedAt = Date.now();
+      throw error;
+    })
+    .finally(() => {
+      if (windowsNotificationSettingsPromise === settingsPromise)
+        windowsNotificationSettingsPromise = null;
+    });
+  windowsNotificationSettingsPromise = settingsPromise;
+  return settingsPromise;
+}
+
+function getNotificationPermissionSnapshot() {
+  if (process.platform === 'win32') {
+    if (!app.isPackaged || !Notification.isSupported()) {
+      return { authorizationStatus: 'unsupported', canPresent: false };
+    }
+    return { ...notificationPermissionSnapshot };
+  }
+  if (process.platform !== 'darwin') {
+    const supported = Notification.isSupported();
+    return {
+      authorizationStatus: supported ? 'authorized' : 'unsupported',
+      canPresent: supported,
+    };
+  }
+  if (!app.isPackaged)
+    return { authorizationStatus: 'unsupported', canPresent: false };
+  return { ...notificationPermissionSnapshot };
+}
+
+function refreshNotificationPermissionSnapshot() {
+  const supportsPermissionQuery =
+    process.platform === 'darwin' && app.isPackaged;
+  if (process.platform === 'win32' && app.isPackaged) {
+    void refreshWindowsNotificationSettings().catch((error) => {
+      console.error('[notifications] unable to refresh authorization', error);
+    });
+    return;
+  }
+  const cacheDuration = 5000;
+  if (
+    !supportsPermissionQuery ||
+    Date.now() - notificationPermissionCheckedAt < cacheDuration
+  ) {
+    return;
+  }
+  if (notificationPermissionRefreshPromise) return;
+  const refreshPromise = getMacOSNotificationSettings()
+    .catch((error) => {
+      notificationPermissionCheckedAt = Date.now();
+      console.error('[notifications] unable to refresh authorization', error);
+    })
+    .finally(() => {
+      if (notificationPermissionRefreshPromise === refreshPromise)
+        notificationPermissionRefreshPromise = null;
+    });
+  notificationPermissionRefreshPromise = refreshPromise;
+}
+
+function areLimitNotificationsEnabled() {
+  return !store || store.getSettings().notificationsEnabled;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForMacOSNotificationAuthorization(timeoutMs = 120_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await delay(750);
+    try {
+      const settings = await getMacOSNotificationSettings();
+      if (canPresentMacOSNotification(settings)) return true;
+    } catch (error) {
+      console.error('[notifications] authorization poll failed', error);
+      return false;
+    }
+  }
+  return false;
+}
+
+function promptForMacOSNotificationSettings() {
+  if (notificationSettingsDialogPromise)
+    return notificationSettingsDialogPromise;
+  const generation = notificationAuthorizationGeneration;
+  const isCurrentRequest = () =>
+    generation === notificationAuthorizationGeneration &&
+    areLimitNotificationsEnabled();
+  const promptPromise = (async () => {
+    if (
+      process.platform !== 'darwin' ||
+      !app.isPackaged ||
+      !isCurrentRequest() ||
+      notificationSettingsDialogShown
+    ) {
+      return false;
+    }
+    let settings;
+    try {
+      settings = await getMacOSNotificationSettings();
+    } catch (error) {
+      console.error(
+        '[notifications] unable to read settings for prompt',
+        error,
+      );
+      return false;
+    }
+    if (
+      !isCurrentRequest() ||
+      notificationSettingsDialogShown ||
+      canPresentMacOSNotification(settings) ||
+      (settings.authorizationStatus !== 'denied' &&
+        settings.alertSetting !== 'disabled')
+    ) {
+      return false;
+    }
+
+    notificationSettingsDialogShown = true;
+    const t = desktopMessages(
+      store?.getSettings().language ||
+        resolveDesktopLanguage(app.getPreferredSystemLanguages()),
+    );
+    const options = {
+      type: 'warning',
+      title: t.notificationPermissionTitle,
+      message: t.notificationPermissionMessage,
+      detail: t.notificationPermissionDetail,
+      buttons: [t.openNotificationSettings, t.later],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    try {
+      const result =
+        mainWindow && !mainWindow.isDestroyed()
+          ? await dialog.showMessageBox(mainWindow, options)
+          : await dialog.showMessageBox(options);
+      if (result.response !== 0 || !isCurrentRequest()) return false;
+      await shell.openExternal(
+        'x-apple.systempreferences:com.apple.Notifications-Settings.extension',
+      );
+      return true;
+    } catch (error) {
+      console.error(
+        '[notifications] unable to open notification settings',
+        error,
+      );
+      return false;
+    }
+  })().finally(() => {
+    if (notificationSettingsDialogPromise === promptPromise)
+      notificationSettingsDialogPromise = null;
+  });
+  notificationSettingsDialogPromise = promptPromise;
+  return promptPromise;
+}
+
+function ensureSystemNotificationAuthorization({
+  requestIfNeeded = false,
+  timeoutMs = 120_000,
+} = {}) {
+  if (!areLimitNotificationsEnabled()) return Promise.resolve(false);
+  if (process.platform === 'win32') {
+    if (!app.isPackaged || !Notification.isSupported())
+      return Promise.resolve(false);
+    return refreshWindowsNotificationSettings({ force: true })
+      .then((settings) => settings.canPresent)
+      .catch((error) => {
+        notificationPermissionCheckedAt = Date.now();
+        console.error(
+          '[notifications] unable to read Windows notification setting; attempting delivery',
+          error,
+        );
+        return true;
+      });
+  }
+  if (process.platform !== 'darwin')
+    return Promise.resolve(Notification.isSupported());
+  if (!app.isPackaged || !Notification.isSupported())
+    return Promise.resolve(false);
+  if (notificationAuthorizationPromise) return notificationAuthorizationPromise;
+
+  const generation = notificationAuthorizationGeneration;
+  const isCurrentRequest = () =>
+    generation === notificationAuthorizationGeneration &&
+    areLimitNotificationsEnabled();
+  let permissionPrompt = null;
+  let permissionPromptFailed = false;
+  const authorizationPromise = (async () => {
+    let settings;
+    try {
+      settings = await getMacOSNotificationSettings();
+    } catch (error) {
+      console.error('[notifications] unable to read authorization', error);
+      return false;
+    }
+    if (!isCurrentRequest()) return false;
+    if (canPresentMacOSNotification(settings)) return true;
+    if (settings.authorizationStatus !== 'not-determined' || !requestIfNeeded) {
+      console.error(
+        `[notifications] macOS authorization=${settings.authorizationStatus}, alert=${settings.alertSetting}`,
+      );
+      return false;
+    }
+
+    const t = desktopMessages(
+      store?.getSettings().language ||
+        resolveDesktopLanguage(app.getPreferredSystemLanguages()),
+    );
+    try {
+      permissionPrompt = new Notification({
+        id: 'limit-notification-permission',
+        title: t.notificationRequestTitle,
+        body: t.notificationRequestBody,
+      });
+      notificationPermissionPrompt = permissionPrompt;
+    } catch (error) {
+      console.error(
+        '[notifications] permission request creation failed',
+        error,
+      );
+      return false;
+    }
+    permissionPrompt.once('failed', (_event, error) => {
+      permissionPromptFailed = true;
+      console.error('[notifications] permission request failed', error);
+    });
+    try {
+      permissionPrompt.show();
+    } catch (error) {
+      console.error('[notifications] permission request threw', error);
+      return false;
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (!isCurrentRequest() || permissionPromptFailed) return false;
+      await delay(750);
+      try {
+        settings = await getMacOSNotificationSettings();
+      } catch (error) {
+        console.error('[notifications] authorization poll failed', error);
+        return false;
+      }
+      if (!isCurrentRequest() || permissionPromptFailed) return false;
+      if (canPresentMacOSNotification(settings)) return true;
+      if (settings.authorizationStatus !== 'not-determined') {
+        console.error(
+          `[notifications] macOS authorization=${settings.authorizationStatus}, alert=${settings.alertSetting}`,
+        );
+        return false;
+      }
+    }
+    console.error('[notifications] authorization request timed out');
+    return false;
+  })().finally(() => {
+    permissionPrompt?.close();
+    if (notificationPermissionPrompt === permissionPrompt)
+      notificationPermissionPrompt = null;
+    if (notificationAuthorizationPromise === authorizationPromise)
+      notificationAuthorizationPromise = null;
+  });
+  notificationAuthorizationPromise = authorizationPromise;
+  return authorizationPromise;
+}
+
+function showSystemNotification({
+  title,
+  body,
+  context,
+  id,
+  onClick,
+  isCurrent = () => true,
+}) {
+  if (!Notification.isSupported()) {
+    console.error(`[notifications] ${context}: not supported`);
+    return Promise.resolve(false);
+  }
 
   return new Promise((resolve) => {
-    const notification = new Notification({
-      title: payload.title,
-      body: payload.message,
-    });
+    let notification;
+    try {
+      notification = new Notification({ title, body, id });
+    } catch (error) {
+      console.error(`[notifications] ${context}: creation failed`, error);
+      resolve(false);
+      return;
+    }
+    const notificationId = id || notification.id;
+    const previousNotification = activeSystemNotifications.get(notificationId);
+    if (previousNotification && previousNotification !== notification)
+      previousNotification.close();
+    activeSystemNotifications.set(notificationId, notification);
+    while (activeSystemNotifications.size > 256) {
+      const oldestId = activeSystemNotifications.keys().next().value;
+      const oldestNotification = activeSystemNotifications.get(oldestId);
+      activeSystemNotifications.delete(oldestId);
+      oldestNotification?.close();
+    }
     let settled = false;
     const finish = (delivered) => {
       if (settled) return;
@@ -230,60 +691,263 @@ function notifyLimit(limit, kind, usedSeconds) {
       clearTimeout(timeout);
       resolve(delivered);
     };
-    const timeout = setTimeout(() => finish(false), 4000);
-    notification.on('click', showMainWindow);
-    notification.once('show', () => finish(true));
-    notification.once('failed', () => finish(false));
+    const timeout = setTimeout(() => {
+      console.error(`[notifications] ${context}: delivery timed out`);
+      if (activeSystemNotifications.get(notificationId) === notification)
+        activeSystemNotifications.delete(notificationId);
+      notification.close();
+      finish(false);
+    }, 4000);
+    notification.on('click', onClick || showMainWindow);
+    notification.once('close', () => {
+      if (activeSystemNotifications.get(notificationId) === notification)
+        activeSystemNotifications.delete(notificationId);
+      finish(false);
+    });
+    notification.once('show', () => {
+      if (!isCurrent()) {
+        notification.close();
+        finish(false);
+        return;
+      }
+      finish(true);
+    });
+    notification.once('failed', (_event, error) => {
+      if (activeSystemNotifications.get(notificationId) === notification)
+        activeSystemNotifications.delete(notificationId);
+      console.error(`[notifications] ${context}: delivery failed`, error);
+      finish(false);
+    });
     try {
       notification.show();
-    } catch {
+    } catch (error) {
+      if (activeSystemNotifications.get(notificationId) === notification)
+        activeSystemNotifications.delete(notificationId);
+      console.error(`[notifications] ${context}: show threw`, error);
       finish(false);
     }
   });
 }
 
-async function attemptLimitNotification(limit, kind, usedSeconds) {
-  const key = `${localDay()}:${limit.appId}:${kind}`;
+function flushQueuedInAppAlerts() {
+  if (
+    !areLimitNotificationsEnabled() ||
+    !limitNotificationRendererReady ||
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
+    if (!areLimitNotificationsEnabled()) queuedInAppAlerts.clear();
+    return;
+  }
+  for (const [key, payload] of queuedInAppAlerts) {
+    try {
+      mainWindow.webContents.send('limits:notification', payload);
+      queuedInAppAlerts.delete(key);
+      inAppAlertsShown.add(key);
+    } catch (error) {
+      console.error('[notifications] unable to flush in-app alert', error);
+      return;
+    }
+  }
+  while (inAppAlertsShown.size > 1024)
+    inAppAlertsShown.delete(inAppAlertsShown.values().next().value);
+}
+
+function emitInAppLimitNotification(key, payload) {
+  if (inAppAlertsShown.has(key)) return;
+  if (
+    !limitNotificationRendererReady ||
+    !mainWindow ||
+    mainWindow.isDestroyed()
+  ) {
+    queuedInAppAlerts.set(key, payload);
+    while (queuedInAppAlerts.size > 256)
+      queuedInAppAlerts.delete(queuedInAppAlerts.keys().next().value);
+    return;
+  }
+  try {
+    mainWindow.webContents.send('limits:notification', payload);
+    inAppAlertsShown.add(key);
+    while (inAppAlertsShown.size > 1024)
+      inAppAlertsShown.delete(inAppAlertsShown.values().next().value);
+  } catch (error) {
+    console.error('[notifications] unable to show in-app alert', error);
+    queuedInAppAlerts.set(key, payload);
+  }
+}
+
+function buildLimitNotificationPayload(limit, kind, usedSeconds) {
+  const usedMinutes = Math.floor(usedSeconds / 60);
+  const isWarning = kind === 'warning';
+  const t = desktopMessages(store?.getSettings().language);
+  const targetName = limit.siteDomain || limit.appName;
+  return {
+    kind,
+    appId: limit.appId,
+    appName: targetName,
+    title: isWarning ? t.warningTitle(targetName) : t.reachedTitle(targetName),
+    message: isWarning
+      ? t.warningMessage(Math.max(1, limit.dailyLimitMinutes - usedMinutes))
+      : t.reachedMessage(usedMinutes, limit.dailyLimitMinutes),
+  };
+}
+
+function getEligibleLimitNotification(limitId, kind, day, date = new Date()) {
+  if (!store || localDay(date) !== day) return null;
+  const limit = store.getLimit(limitId);
+  if (!limit) return null;
+  const usedSeconds = store.getTodayLimitUsage(limit, date);
+  return isLimitNotificationDue(limit, kind, usedSeconds, day)
+    ? { limit, usedSeconds }
+    : null;
+}
+
+function pruneLimitNotificationCaches(day) {
+  pruneDayScopedCache(notificationRetryAt, day, 1024);
+  pruneDayScopedCache(inAppAlertsShown, day, 1024);
+  pruneDayScopedCache(queuedInAppAlerts, day, 256);
+  pruneDayScopedCache(deliveredAlerts, day, 1024);
+}
+
+function systemLimitNotificationId(limitId, kind, day) {
+  return `limit-${day}-${kind}-${crypto
+    .createHash('sha256')
+    .update(limitId)
+    .digest('base64url')
+    .slice(0, 24)}`;
+}
+
+function getLimitNotificationRevision(limitId) {
+  return limitNotificationRevisions.get(limitId) || 0;
+}
+
+function clearLimitNotificationState(limitId, day = localDay()) {
+  limitNotificationRevisions.set(limitId, ++nextLimitNotificationRevision);
+  for (const kind of ['warning', 'reached']) {
+    const key = notificationKey(day, limitId, kind);
+    notificationRetryAt.delete(key);
+    inAppAlertsShown.delete(key);
+    queuedInAppAlerts.delete(key);
+    deliveredAlerts.delete(key);
+    const notificationId = systemLimitNotificationId(limitId, kind, day);
+    const notification = activeSystemNotifications.get(notificationId);
+    if (notification) {
+      activeSystemNotifications.delete(notificationId);
+      notification.close();
+    }
+  }
+}
+
+async function notifyLimit(limitId, kind, day, revision) {
+  const isCurrentAttempt = () =>
+    revision === getLimitNotificationRevision(limitId) &&
+    areLimitNotificationsEnabled() &&
+    localDay() === day;
+  if (!isCurrentAttempt()) return { delivered: false, shouldRetry: false };
+  let eligible = getEligibleLimitNotification(limitId, kind, day);
+  if (!eligible) return { delivered: false, shouldRetry: false };
+  let payload = buildLimitNotificationPayload(
+    eligible.limit,
+    kind,
+    eligible.usedSeconds,
+  );
+  const alertKey = notificationKey(day, limitId, kind);
+  emitInAppLimitNotification(alertKey, payload);
+
+  const authorized = await ensureSystemNotificationAuthorization({
+    requestIfNeeded: true,
+  });
+  if (!authorized || !isCurrentAttempt()) {
+    if (!authorized && isCurrentAttempt())
+      void promptForMacOSNotificationSettings();
+    return {
+      delivered: false,
+      shouldRetry: isCurrentAttempt(),
+    };
+  }
+  eligible = getEligibleLimitNotification(limitId, kind, day);
+  if (!eligible) return { delivered: false, shouldRetry: false };
+  payload = buildLimitNotificationPayload(
+    eligible.limit,
+    kind,
+    eligible.usedSeconds,
+  );
+  const delivered = await showSystemNotification({
+    title: payload.title,
+    body: payload.message,
+    context: `limit ${limitId} (${kind})`,
+    id: systemLimitNotificationId(limitId, kind, day),
+    isCurrent: isCurrentAttempt,
+  });
+  return { delivered, shouldRetry: !delivered && isCurrentAttempt() };
+}
+
+async function attemptLimitNotification(limitId, kind, day) {
+  pruneLimitNotificationCaches(day);
+  const key = notificationKey(day, limitId, kind);
   if (
     pendingAlerts.has(key) ||
+    deliveredAlerts.has(key) ||
     (notificationRetryAt.get(key) || 0) > Date.now()
   )
     return;
   pendingAlerts.add(key);
+  const revision = getLimitNotificationRevision(limitId);
   try {
-    const delivered = await notifyLimit(limit, kind, usedSeconds);
-    if (delivered) {
-      store.markLimitNotification(limit.appId, kind);
+    const result = await notifyLimit(limitId, kind, day, revision);
+    if (revision !== getLimitNotificationRevision(limitId)) {
       notificationRetryAt.delete(key);
-    } else {
-      notificationRetryAt.set(key, Date.now() + 5 * 60_000);
+      return;
     }
+    if (result.delivered) {
+      const date = new Date();
+      if (!getEligibleLimitNotification(limitId, kind, day, date)) {
+        notificationRetryAt.delete(key);
+        return;
+      }
+      deliveredAlerts.add(key);
+      notificationRetryAt.delete(key);
+      try {
+        store.markLimitNotification(limitId, kind, date);
+      } catch (error) {
+        console.error(
+          '[notifications] delivered notification could not be persisted',
+          error,
+        );
+        broadcastUpdate({ reason: 'storage-error' });
+      }
+    } else if (result.shouldRetry && areLimitNotificationsEnabled()) {
+      notificationRetryAt.set(key, Date.now() + 5 * 60_000);
+    } else {
+      notificationRetryAt.delete(key);
+    }
+  } catch (error) {
+    console.error('[notifications] limit notification attempt failed', error);
+    if (areLimitNotificationsEnabled() && localDay() === day)
+      notificationRetryAt.set(key, Date.now() + 5 * 60_000);
   } finally {
     pendingAlerts.delete(key);
   }
 }
 
 function checkLimit(sample) {
-  const limit = store.getLimit(sample.id);
-  if (!limit?.enabled || limit.pausedDate === localDay()) return;
-  const usedSeconds = store.getTodayUsage(sample.id);
-  const usedMinutes = usedSeconds / 60;
-  const today = localDay();
-  const warningAt = limit.dailyLimitMinutes - limit.warningMinutes;
-
-  if (
-    limit.warningMinutes > 0 &&
-    usedMinutes >= warningAt &&
-    usedMinutes < limit.dailyLimitMinutes &&
-    limit.lastWarningDate !== today
-  ) {
-    void attemptLimitNotification(limit, 'warning', usedSeconds);
-  }
-  if (
-    usedMinutes >= limit.dailyLimitMinutes &&
-    limit.lastReachedDate !== today
-  ) {
-    void attemptLimitNotification(limit, 'reached', usedSeconds);
+  if (!areLimitNotificationsEnabled()) return;
+  const date = new Date();
+  const day = localDay(date);
+  pruneLimitNotificationCaches(day);
+  const limits = store
+    .getLimits()
+    .filter(
+      (limit) =>
+        limit.appId === sample.id &&
+        (!limit.siteDomain || limit.siteDomain === sample.site?.domain),
+    );
+  for (const limit of limits) {
+    const usedSeconds = store.getTodayLimitUsage(limit, date);
+    if (isLimitNotificationDue(limit, 'warning', usedSeconds, day))
+      void attemptLimitNotification(limit.id, 'warning', day);
+    if (isLimitNotificationDue(limit, 'reached', usedSeconds, day))
+      void attemptLimitNotification(limit.id, 'reached', day);
   }
 }
 
@@ -385,13 +1049,25 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
 }
 
 function registerIpc() {
+  ipcMain.on('limits:renderer-ready', (event) => {
+    const trustedFrame =
+      mainWindow &&
+      event.sender === mainWindow.webContents &&
+      event.senderFrame === mainWindow.webContents.mainFrame &&
+      event.senderFrame.url === mainWindow.webContents.getURL();
+    if (!trustedFrame) return;
+    limitNotificationRendererReady = true;
+    flushQueuedInAppAlerts();
+  });
   handleIpc('dashboard:get', (range) => {
     const { from, to } = validateRange(range);
+    refreshNotificationPermissionSnapshot();
     return {
       ...store.getDashboard(from, to),
       tracker: tracker.getStatus(),
       platform: process.platform,
       isPackaged: app.isPackaged,
+      notificationPermission: getNotificationPermissionSnapshot(),
     };
   });
   handleIpc('tracker:status', () => tracker.getStatus());
@@ -443,8 +1119,39 @@ function registerIpc() {
     ) {
       accessibilityPermission?.requestOnce();
     }
-    if (typeof safePatch.launchAtLogin === 'boolean' && app.isPackaged) {
+    if (
+      typeof safePatch.launchAtLogin === 'boolean' &&
+      app.isPackaged &&
+      !isSignedDevelopment
+    ) {
       app.setLoginItemSettings({ openAtLogin: safePatch.launchAtLogin });
+    }
+    if (
+      typeof safePatch.notificationsEnabled === 'boolean' &&
+      safePatch.notificationsEnabled !== previousSettings.notificationsEnabled
+    ) {
+      notificationRetryAt.clear();
+      if (safePatch.notificationsEnabled) {
+        notificationSettingsDialogShown = false;
+        void ensureSystemNotificationAuthorization({
+          requestIfNeeded: true,
+        }).then((authorized) => {
+          if (!authorized && areLimitNotificationsEnabled())
+            void promptForMacOSNotificationSettings();
+        });
+      } else {
+        notificationAuthorizationGeneration += 1;
+        notificationAuthorizationPromise = null;
+        notificationSettingsDialogPromise = null;
+        queuedInAppAlerts.clear();
+        inAppAlertsShown.clear();
+        deliveredAlerts.clear();
+        notificationPermissionPrompt?.close();
+        notificationPermissionPrompt = null;
+        for (const notification of activeSystemNotifications.values())
+          notification.close();
+        activeSystemNotifications.clear();
+      }
     }
     refreshTrayMenu();
     broadcastUpdate({ reason: 'settings' });
@@ -452,27 +1159,48 @@ function registerIpc() {
   });
   handleIpc('limits:save', (limit) => {
     const saved = store.saveLimit(limit);
+    clearLimitNotificationState(saved.id);
+    if (saved.enabled && areLimitNotificationsEnabled()) {
+      void ensureSystemNotificationAuthorization({
+        requestIfNeeded: true,
+      }).then((authorized) => {
+        if (!authorized) void promptForMacOSNotificationSettings();
+      });
+    }
     broadcastUpdate({ reason: 'limit' });
     return saved;
   });
-  handleIpc('limits:delete', (appId) => {
-    if (typeof appId !== 'string' || !appId || appId.length > 512)
+  handleIpc('limits:delete', (limitId) => {
+    if (typeof limitId !== 'string' || !limitId || limitId.length > 1024)
       throw new Error('Некоректний ідентифікатор застосунку');
-    store.deleteLimit(appId);
+    store.deleteLimit(limitId);
+    clearLimitNotificationState(limitId);
     broadcastUpdate({ reason: 'limit' });
     return true;
   });
-  handleIpc('limits:pause-today', (appId) => {
-    if (typeof appId !== 'string' || !appId || appId.length > 512)
+  handleIpc('limits:pause-today', (limitId) => {
+    if (typeof limitId !== 'string' || !limitId || limitId.length > 1024)
       throw new Error('Некоректний ідентифікатор застосунку');
-    const limit = store.pauseLimitToday(appId);
+    const limit = store.pauseLimitToday(limitId);
+    clearLimitNotificationState(limitId);
     broadcastUpdate({ reason: 'limit' });
     return limit;
   });
   handleIpc('permissions:open', async (kind) => {
-    if (kind !== undefined && kind !== 'accessibility' && kind !== 'automation')
+    if (
+      kind !== undefined &&
+      kind !== 'accessibility' &&
+      kind !== 'automation' &&
+      kind !== 'notifications'
+    )
       throw new Error('Некоректний тип дозволу');
     if (process.platform === 'darwin') {
+      if (kind === 'notifications') {
+        await shell.openExternal(
+          'x-apple.systempreferences:com.apple.Notifications-Settings.extension',
+        );
+        return true;
+      }
       if (kind === 'accessibility') accessibilityPermission?.requestOnce();
       const section =
         kind === 'automation' ? 'Privacy_Automation' : 'Privacy_Accessibility';
@@ -481,12 +1209,43 @@ function registerIpc() {
       );
       return true;
     }
+    if (process.platform === 'win32' && kind === 'notifications') {
+      notificationPermissionCheckedAt = 0;
+      await shell.openExternal('ms-settings:notifications');
+      return true;
+    }
     return false;
   });
 }
 
 if (hasSingleInstanceLock)
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    if (shouldTestSystemNotification) {
+      let authorized = await ensureSystemNotificationAuthorization({
+        requestIfNeeded: true,
+      });
+      if (!authorized && (await promptForMacOSNotificationSettings())) {
+        authorized = await waitForMacOSNotificationAuthorization();
+      }
+      const delivered =
+        authorized &&
+        (await showSystemNotification({
+          title: 'Limit — перевірка сповіщень',
+          body: 'Системні сповіщення Limit працюють.',
+          context: 'signed development self-test',
+          id: `limit-system-notification-test-${notificationTestId || 'manual'}`,
+          onClick: () => undefined,
+        }));
+      console.log(
+        `[notifications] signed development self-test: authorization=${authorized ? 'authorized' : 'unavailable'}; notification=${delivered ? 'accepted' : 'failed'}`,
+      );
+      setTimeout(() => {
+        isQuitting = true;
+        app.exit(authorized && delivered ? 0 : 1);
+      }, 5000);
+      return;
+    }
+
     configureSessionSecurity();
     store = new UsageStore(
       path.join(app.getPath('userData'), 'usage-data.sqlite3'),
@@ -521,6 +1280,11 @@ if (hasSingleInstanceLock)
       }, 3000);
     });
     tracker.start();
+    if (areLimitNotificationsEnabled()) {
+      setTimeout(() => {
+        void ensureSystemNotificationAuthorization({ requestIfNeeded: true });
+      }, 1000);
+    }
     powerMonitor.on('suspend', () => {
       suspended = true;
       tracker.stop();

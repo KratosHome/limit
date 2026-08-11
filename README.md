@@ -11,6 +11,7 @@ Limit — локальний desktop-трекер активного часу д
 - локальна статистика за сьогодні, вчора, 7/30 днів або власний період;
 - таблиця із пошуком, категоріями та сортуванням;
 - щоденні ліміти, раннє попередження й сповіщення при досягненні;
+- глобальний перемикач сповіщень про ліміти в налаштуваннях;
 - пауза ліміту до кінця дня;
 - фоновий режим через tray;
 - світла й темна тема;
@@ -27,7 +28,9 @@ Limit не читає адреси сайтів. Якщо користувач �
 
 ## Запуск
 
-Потрібен актуальний Node.js і npm.
+Потрібні Node.js 22.12 або новіший і npm. Для локальної macOS-збірки також
+потрібні Xcode Command Line Tools; Linux/X11 використовує `xprop` із пакета
+`x11-utils`.
 
 ```bash
 npm install
@@ -43,7 +46,11 @@ npm run lint      # ESLint для React, TypeScript і Electron
 npm run format:check # перевірка форматування Prettier
 npm run check     # усі перевірки, які виконує pre-push
 npm run package   # unpacked desktop build для поточної ОС
-npm run dist      # інсталятор/образ для поточної ОС
+npm run package:mac:local # локальний ad-hoc signed Limit.app для macOS
+npm run package:win:x64 # unpacked Windows x64 build
+npm run test:notification:mac # один нативний test-банер macOS
+npm run dist      # підписаний release-артефакт для поточної ОС
+npm run dist:win:x64 # підписаний Windows x64 installer
 ```
 
 Після `npm install` Husky автоматично вмикає Git hooks. `pre-commit` форматує та
@@ -53,13 +60,40 @@ npm run dist      # інсталятор/образ для поточної ОС
 
 Щоб увімкнути статистику сайтів на macOS, відкрийте **Налаштування → Відстеження сайтів** і підтвердьте системні дозволи Accessibility та Automation. Нові доменні дані почнуть накопичуватися після ввімкнення; повні URL не записуються.
 
+На macOS `npm run dev` збирає локальний ad-hoc signed `Limit.app` і запускає
+packaged renderer зі сховищем `Limit Development`. Це потрібно для нативних
+сповіщень Electron 42+: macOS не приймає їх від сирого непідписаного
+`node_modules/electron/dist/Electron.app`. Перед повторним dev-запуском завершіть
+попередній Limit через tray; команда зупиниться до перепакування, якщо попередній
+підписаний процес ще працює.
+Для швидкої роботи над UI з Vite/HMR є `npm run dev:ui`. Він використовує окреме
+сховище `Limit UI Development`, тому не конфліктує з підписаним dev-запуском,
+але системні сповіщення macOS у цьому непідписаному режимі не підтримуються.
+
+Під час першого підписаного запуску Limit запитує системний дозвіл на
+сповіщення, якщо перемикач **Налаштування → Сповіщення про ліміти** увімкнений.
+Якщо дозвіл уже відхилений або alerts вимкнені, повторне ввімкнення перемикача
+пропонує перейти до **System Settings → Notifications**. Невеликий N-API
+bridge читає офіційний `UNUserNotificationCenter.authorizationStatus` усередині
+Electron main-process; дата попередження/досягнення зберігається лише після
+стану `authorized` і прийнятого системою notification request.
+
 У dev-режимі macOS може привʼязати Accessibility/Automation до застосунку, з якого запущено Electron (`IntelliJ IDEA`, `Terminal` або `Electron`). Для перевірки дозволів під назвою **Limit** потрібно запустити packaged `Limit.app` напряму. Фоновий трекер перевіряє Accessibility без системного prompt; запит із prompt виконується не більше одного разу за запуск і лише після явної дії користувача.
 
-Для локальної macOS-збірки без чинного Developer ID після `npm run package` виконайте `npm run sign:mac:local`, а потім відкрийте `release/mac-arm64/Limit.app`. Це ad-hoc підпис лише для локального тестування: після кожної нової збірки macOS може попросити дозволи знову. Для стабільного релізу потрібен чинний сертифікат Apple Development або Developer ID Application.
+Для окремої локальної macOS-збірки без чинного Developer ID виконайте
+`npm run package:mac:local`, а потім відкрийте `Limit.app` у відповідній папці
+`release/mac*`. Це ad-hoc підпис лише для локального тестування: після кожної
+нової збірки macOS може попросити дозволи знову. Команди `dist` навмисно
+відмовляються створювати непідписаний production-реліз: для macOS потрібні
+Developer ID Application і нотаризація, для Windows — сертифікат code signing.
+Windows-збірка зараз таргетує x64; її інсталятор і системні toast-сповіщення
+потрібно smoke-тестувати на реальній Windows 10/11 після встановлення через
+створений ярлик.
 
 ## Архітектура
 
 - `electron/main.cjs` — lifecycle Electron, tray, IPC, notifications і limit engine;
+- `electron/native/macos-notification-permission.mm` — in-process перевірка дозволу macOS;
 - `electron/preload.cjs` — вузький API через `contextBridge`;
 - `electron/tracker.cjs` — polling активного застосунку та idle/sleep handling;
 - `electron/store.cjs` — правила запису статистики, ліміти й агрегація;

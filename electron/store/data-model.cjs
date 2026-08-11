@@ -1,11 +1,16 @@
+const crypto = require('node:crypto');
+
+const SITE_LIMIT_ID_PREFIX = 'limit-site:v1:';
+
 const DEFAULT_DATA = Object.freeze({
-  schemaVersion: 3,
+  schemaVersion: 7,
   usageByDay: {},
   limits: {},
   settings: {
     language: 'uk',
     trackingEnabled: true,
     websiteTrackingEnabled: false,
+    notificationsEnabled: true,
     launchAtLogin: false,
     idleThresholdSeconds: 60,
   },
@@ -110,6 +115,17 @@ function normalizeSiteDomain(value) {
   return domain;
 }
 
+function createLimitId(appId, siteDomain) {
+  const normalizedAppId = String(appId);
+  const domain = normalizeSiteDomain(siteDomain);
+  if (!domain) return normalizedAppId;
+  const digest = crypto
+    .createHash('sha256')
+    .update(JSON.stringify([normalizedAppId, domain]))
+    .digest('base64url');
+  return `${SITE_LIMIT_ID_PREFIX}${digest}`;
+}
+
 function getOwn(record, key) {
   return record && Object.prototype.hasOwnProperty.call(record, key)
     ? record[key]
@@ -153,6 +169,10 @@ function normalizeData(value, defaultLanguage = 'uk') {
           ? settings.trackingEnabled
           : fallback.settings.trackingEnabled,
       websiteTrackingEnabled: settings.websiteTrackingEnabled === true,
+      notificationsEnabled:
+        typeof settings.notificationsEnabled === 'boolean'
+          ? settings.notificationsEnabled
+          : fallback.settings.notificationsEnabled,
       launchAtLogin: settings.launchAtLogin === true,
       idleThresholdSeconds,
     },
@@ -161,7 +181,9 @@ function normalizeData(value, defaultLanguage = 'uk') {
 
 module.exports = {
   CATEGORY_IDS,
+  SITE_LIMIT_ID_PREFIX,
   cloneDefaultData,
+  createLimitId,
   getOwn,
   guessCategory,
   normalizeCategory,

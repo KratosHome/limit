@@ -5,7 +5,6 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   findWindowsBinding,
-  unpackedPath,
   websiteTrackingErrorKind,
   windowsBindingPriority,
 } = require('../active-app-provider.cjs');
@@ -78,13 +77,6 @@ test('windowsBindingPriority rejects other platforms and newer napi versions', (
   assert.equal(
     windowsBindingPriority('napi-9-win32-unknown-x64', 'win32', 'x64', 9),
     9,
-  );
-});
-
-test('unpackedPath rewrites packaged asar paths', () => {
-  assert.equal(
-    unpackedPath('C:\\App\\resources\\app.asar\\node_modules\\get-windows'),
-    'C:\\App\\resources\\app.asar.unpacked\\node_modules\\get-windows',
   );
 });
 

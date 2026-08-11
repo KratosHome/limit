@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { AppError, ERROR_CODES } = require('./errors.cjs');
+const { createLimitId } = require('./store/data-model.cjs');
 
 class UnsupportedDatabaseVersionError extends Error {}
 class DatabaseMigrationError extends Error {}
@@ -214,6 +215,58 @@ class SQLiteStorage {
           END;
         `,
       },
+      {
+        version: 4,
+        name: 'site_limits',
+        up: `
+          ALTER TABLE limits ADD COLUMN source_app_id TEXT;
+          ALTER TABLE limits ADD COLUMN site_domain TEXT;
+          UPDATE limits SET source_app_id = app_id WHERE source_app_id IS NULL;
+        `,
+      },
+      {
+        version: 5,
+        name: 'retry_native_notifications',
+        up: `
+          UPDATE limits
+          SET last_warning_date = NULL,
+              last_reached_date = NULL;
+        `,
+      },
+      {
+        version: 6,
+        name: 'notification_preference',
+        up: `
+          ALTER TABLE settings
+          ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 1
+            CHECK (notifications_enabled IN (0, 1));
+        `,
+      },
+      {
+        version: 7,
+        name: 'canonical_site_limit_ids',
+        up: (database) => {
+          const siteLimits = database
+            .prepare(
+              `SELECT app_id, source_app_id, site_domain
+               FROM limits
+               WHERE site_domain IS NOT NULL`,
+            )
+            .all();
+          const updateId = database.prepare(
+            'UPDATE limits SET app_id = ? WHERE app_id = ?',
+          );
+          for (const limit of siteLimits) {
+            updateId.run(
+              createLimitId(
+                limit.source_app_id || limit.app_id,
+                limit.site_domain,
+              ),
+              limit.app_id,
+            );
+          }
+        },
+      },
     ];
     const latestVersion = migrations.at(-1).version;
     const currentVersion =
@@ -235,7 +288,11 @@ class SQLiteStorage {
       if (migration.version <= currentVersion) continue;
       this.database.exec('BEGIN IMMEDIATE');
       try {
-        this.database.exec(migration.up);
+        if (typeof migration.up === 'function') {
+          migration.up(this.database);
+        } else {
+          this.database.exec(migration.up);
+        }
         this.database
           .prepare(
             `INSERT INTO schema_migrations (version, name, applied_at)
@@ -328,13 +385,14 @@ class SQLiteStorage {
         .prepare(
           `INSERT INTO settings (
             id, language, tracking_enabled, website_tracking_enabled,
-            launch_at_login, idle_threshold_seconds
-          ) VALUES (1, ?, ?, ?, ?, ?)`,
+            notifications_enabled, launch_at_login, idle_threshold_seconds
+          ) VALUES (1, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           data.settings.language,
           Number(data.settings.trackingEnabled),
           Number(data.settings.websiteTrackingEnabled),
+          Number(data.settings.notificationsEnabled),
           Number(data.settings.launchAtLogin),
           data.settings.idleThresholdSeconds,
         );
@@ -408,18 +466,21 @@ class SQLiteStorage {
 
       const insertLimit = this.database.prepare(`
         INSERT INTO limits (
-          app_id, app_name, daily_limit_minutes, warning_minutes, enabled,
+          app_id, source_app_id, site_domain, app_name, daily_limit_minutes, warning_minutes, enabled,
           last_warning_date, last_reached_date, paused_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const limit of Object.values(data.limits)) {
         if (!limit?.appId || !limit?.appName) continue;
+        const siteDomain = this.normalizeSiteDomain(limit.siteDomain);
         const dailyLimitMinutes = Math.min(
           1440,
           Math.max(1, Math.round(Number(limit.dailyLimitMinutes) || 1)),
         );
         insertLimit.run(
+          createLimitId(limit.appId, siteDomain),
           limit.appId,
+          siteDomain,
           limit.appName,
           dailyLimitMinutes,
           Math.min(
@@ -438,7 +499,7 @@ class SQLiteStorage {
         )
         .run(new Date().toISOString());
     });
-    this.data = data;
+    this.data = this.readAllData();
   }
 
   readAllData() {
@@ -451,6 +512,7 @@ class SQLiteStorage {
         language: settings.language === 'en' ? 'en' : 'uk',
         trackingEnabled: Boolean(settings.tracking_enabled),
         websiteTrackingEnabled: Boolean(settings.website_tracking_enabled),
+        notificationsEnabled: Boolean(settings.notifications_enabled),
         launchAtLogin: Boolean(settings.launch_at_login),
         idleThresholdSeconds: settings.idle_threshold_seconds,
       };
@@ -505,8 +567,10 @@ class SQLiteStorage {
         configurable: true,
         enumerable: true,
         value: {
-          appId: row.app_id,
+          id: row.app_id,
+          appId: row.source_app_id || row.app_id,
           appName: row.app_name,
+          siteDomain: row.site_domain || null,
           dailyLimitMinutes: row.daily_limit_minutes,
           warningMinutes: row.warning_minutes,
           enabled: Boolean(row.enabled),

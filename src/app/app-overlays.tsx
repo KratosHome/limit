@@ -9,7 +9,7 @@ interface AppOverlaysProps {
   modal: ModalState | null;
   toast: LimitNotification | null;
   onCloseModal: () => void;
-  onDeleteLimit: (appId: string) => Promise<void>;
+  onDeleteLimit: (limitId: string) => Promise<void>;
   onOpenLimitsFromToast: () => void;
   onSaveLimit: (input: LimitInput) => Promise<void>;
 }
