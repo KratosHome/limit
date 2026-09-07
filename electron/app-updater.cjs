@@ -4,6 +4,7 @@ function createAppUpdater({
   app,
   autoUpdater,
   enabled = false,
+  manualInstall = false,
   onStateChange = () => {},
   prepareToQuit = () => {},
   logger = console,
@@ -62,10 +63,14 @@ function createAppUpdater({
 
   const listeners = {
     'checking-for-update': () => setState('checking'),
-    'update-available': (info) => setState('downloading', info?.version),
+    'update-available': (info) =>
+      setState(manualInstall ? 'available' : 'downloading', info?.version),
     'update-not-available': () => setState('idle'),
-    'download-progress': () => setState('downloading', state.version),
-    'update-downloaded': (info) => setState('downloaded', info?.version),
+    'download-progress': () => {
+      if (!manualInstall) setState('downloading', state.version);
+    },
+    'update-downloaded': (info) =>
+      setState(manualInstall ? 'available' : 'downloaded', info?.version),
     error: handleError,
   };
 
@@ -108,8 +113,8 @@ function createAppUpdater({
     if (!active || disposed) return Promise.resolve();
     if (started) return startPromise;
     started = true;
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoDownload = !manualInstall;
+    autoUpdater.autoInstallOnAppQuit = !manualInstall;
     autoUpdater.logger = logger;
     for (const [event, listener] of Object.entries(listeners))
       autoUpdater.on(event, listener);
@@ -129,7 +134,13 @@ function createAppUpdater({
   }
 
   function installUpdate() {
-    if (!active || disposed || installing || state.status !== 'downloaded')
+    if (
+      !active ||
+      manualInstall ||
+      disposed ||
+      installing ||
+      state.status !== 'downloaded'
+    )
       return false;
     installing = true;
     lastError = null;

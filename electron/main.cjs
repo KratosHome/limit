@@ -43,6 +43,8 @@ let store = null;
 let tracker = null;
 let accessibilityPermission = null;
 let appUpdater = null;
+let announcedUpdateVersion = null;
+const APP_RELEASE_URL = 'https://github.com/KratosHome/limit/releases/latest';
 let updateTimer = null;
 let screenLocked = false;
 let suspended = false;
@@ -115,6 +117,43 @@ function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
   mainWindow.show();
   mainWindow.focus();
+  promptForManualUpdate();
+}
+
+async function openAppUpdateRelease() {
+  try {
+    await shell.openExternal(APP_RELEASE_URL);
+  } catch (error) {
+    console.error('[updates] unable to open release page', error);
+  }
+}
+
+function promptForManualUpdate() {
+  const state = appUpdater?.getState();
+  if (
+    isQuitting ||
+    !mainWindow?.isVisible() ||
+    state?.status !== 'available' ||
+    !state.version ||
+    announcedUpdateVersion === state.version
+  )
+    return;
+  announcedUpdateVersion = state.version;
+  const t = desktopMessages(store?.getSettings().language);
+  void dialog
+    .showMessageBox(mainWindow, {
+      type: 'info',
+      title: t.updateAvailableTitle,
+      message: t.updateAvailableMessage(state.version),
+      detail: t.manualUpdateDetail,
+      buttons: [t.downloadUpdate, t.later],
+      defaultId: 1,
+      cancelId: 1,
+    })
+    .then(({ response }) => {
+      if (response === 0 && !isQuitting) void openAppUpdateRelease();
+    })
+    .catch((error) => console.error('[updates] unable to show update', error));
 }
 
 function createWindow() {
@@ -157,7 +196,10 @@ function createWindow() {
   mainWindow.webContents.on('render-process-gone', () => {
     limitNotificationRendererReady = false;
   });
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    promptForManualUpdate();
+  });
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -240,17 +282,21 @@ function refreshTrayMenu() {
             label:
               updateState.status === 'downloaded'
                 ? t.installUpdate(updateState.version)
-                : updateState.status === 'checking'
-                  ? t.checkingForUpdates
-                  : updateState.status === 'downloading'
-                    ? t.downloadingUpdate
-                    : updateState.status === 'error'
-                      ? t.retryUpdate
-                      : t.checkForUpdates,
+                : updateState.status === 'available'
+                  ? t.downloadUpdateVersion(updateState.version)
+                  : updateState.status === 'checking'
+                    ? t.checkingForUpdates
+                    : updateState.status === 'downloading'
+                      ? t.downloadingUpdate
+                      : updateState.status === 'error'
+                        ? t.retryUpdate
+                        : t.checkForUpdates,
             enabled: !['checking', 'downloading'].includes(updateState.status),
             click: () => {
               if (appUpdater.getState().status === 'downloaded') {
                 appUpdater.installUpdate();
+              } else if (appUpdater.getState().status === 'available') {
+                void openAppUpdateRelease();
               } else {
                 void appUpdater.checkForUpdates();
               }
@@ -1408,11 +1454,15 @@ if (hasSingleInstanceLock)
     appUpdater = createAppUpdater({
       app,
       enabled: updatesEnabled,
+      manualInstall: process.platform === 'darwin',
       autoUpdater: updatesEnabled
         ? require('electron-updater').autoUpdater
         : null,
       logger: updateLogger,
-      onStateChange: refreshTrayMenu,
+      onStateChange: () => {
+        refreshTrayMenu();
+        promptForManualUpdate();
+      },
       prepareToQuit: () => {
         isQuitting = true;
         return () => {

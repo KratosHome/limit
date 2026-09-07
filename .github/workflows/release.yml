@@ -56,27 +56,14 @@ jobs:
         run: npm run check
       - name: Set build version
         run: node scripts/release-version.cjs --write
-      - name: Build signed Windows installer
+      - name: Build Windows installer without a certificate
         if: matrix.platform == 'windows'
         shell: bash
-        env:
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: |
-          node scripts/release-credentials.cjs
-          npm run dist:win:x64 -- --publish never
-      - name: Build signed universal Mac installers
+        run: npm run dist:win:x64 -- --publish never
+      - name: Build ad-hoc signed universal Mac installers
         if: matrix.platform == 'mac'
         shell: bash
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          node scripts/release-credentials.cjs
-          npm run dist -- --mac --universal --publish never
+        run: npm run dist -- --mac --universal --publish never
       - name: Upload built artifacts
         uses: actions/upload-artifact@v7
         with:

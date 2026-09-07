@@ -33,6 +33,9 @@
     "dist": "npm run build && electron-builder --config scripts/electron-builder.release.cjs",
     "dist:mac:universal": "npm run build && electron-builder --config scripts/electron-builder.release.cjs --mac --universal",
     "dist:win:x64": "npm run build && electron-builder --config scripts/electron-builder.release.cjs --win --x64",
+    "installers:win": "npm run dist:win:x64 -- --publish never && node scripts/collect-installers.cjs --win",
+    "installers:mac": "npm run dist:mac:universal -- --publish never && node scripts/collect-installers.cjs --mac",
+    "installers:collect": "node scripts/collect-installers.cjs",
     "prepare": "husky"
   },
   "lint-staged": {

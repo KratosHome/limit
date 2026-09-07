@@ -5,14 +5,17 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const yaml = require('js-yaml');
+const { Platform } = require('electron-builder');
+const { WinPackager } = require('app-builder-lib/out/winPackager');
+const {
+  getAppUpdatePublishConfiguration,
+} = require('app-builder-lib/out/publish/PublishManager');
+const releaseConfig = require('../../scripts/electron-builder.release.cjs');
 const {
   compareReleaseVersions,
   deriveReleaseVersion,
   writeReleaseVersion,
 } = require('../../scripts/release-version.cjs');
-const {
-  validateReleaseCredentials,
-} = require('../../scripts/release-credentials.cjs');
 const {
   publishRelease,
   requiredReleaseFiles,
@@ -32,7 +35,7 @@ function writeReleaseFixture(t, version = '0.1.42') {
   const files = requiredReleaseFiles(version);
   const entries = {};
   for (const filename of Object.values(files)) {
-    const content = Buffer.from(`Signed test artifact: ${filename}`);
+    const content = Buffer.from(`Test artifact: ${filename}`);
     fs.writeFileSync(path.join(directory, filename), content);
     entries[filename] = {
       url: filename,
@@ -129,23 +132,60 @@ test('CI version writes preserve npm dependency metadata and update both manifes
   assert.equal(lock.packages['node_modules/example-package'].version, '1.0.2');
 });
 
-test('release credentials fail with names only and require production signing', () => {
-  assert.throws(() => validateReleaseCredentials('win32', {}), /WIN_CSC_LINK/);
-  assert.throws(
-    () =>
-      validateReleaseCredentials('darwin', {
-        CSC_LINK: 'private-content',
-        CSC_KEY_PASSWORD: 'private-password',
-      }),
-    (error) =>
-      error.message.includes('APPLE_ID') && !error.message.includes('private'),
+test('certificate-free Windows packaging keeps executable resource editing', async (t) => {
+  const directory = temporaryDirectory(t);
+  fs.writeFileSync(path.join(directory, 'Limit.exe'), 'test executable');
+  const edited = [];
+  const packager = {
+    appInfo: { productFilename: 'Limit' },
+    platformSpecificBuildOptions: releaseConfig.win,
+    forceCodeSigning: releaseConfig.forceCodeSigning,
+    signAndEditResources: async (filename) => edited.push(filename),
+    shouldSignFile: () => true,
+    get signingQueue() {
+      throw new Error('Certificate signing must stay disabled');
+    },
+  };
+  await WinPackager.prototype.signApp.call(
+    packager,
+    { appOutDir: directory },
+    true,
   );
-  assert.doesNotThrow(() =>
-    validateReleaseCredentials('win32', {
-      WIN_CSC_LINK: 'certificate',
-      WIN_CSC_KEY_PASSWORD: 'password',
-    }),
+  assert.deepEqual(edited, [path.join(directory, 'Limit.exe')]);
+  assert.equal(
+    await WinPackager.prototype.signIf.call(packager, 'Limit.exe'),
+    false,
   );
+});
+
+test('unsigned Windows updater metadata does not inherit a local certificate publisher', async () => {
+  const packager = {
+    config: releaseConfig,
+    platform: Platform.WINDOWS,
+    platformSpecificBuildOptions: releaseConfig.win,
+    appInfo: { updaterCacheDirName: 'limit-updater' },
+    info: { config: releaseConfig, appInfo: { channel: null } },
+    expandMacro: (value) => value,
+    get signingManager() {
+      throw new Error(
+        'Local signing identity must not affect updater metadata',
+      );
+    },
+  };
+  packager.isForceCodeSigningVerification = Object.getOwnPropertyDescriptor(
+    WinPackager.prototype,
+    'isForceCodeSigningVerification',
+  ).get.call(packager);
+  const config = await getAppUpdatePublishConfiguration(
+    packager,
+    null,
+    null,
+    true,
+  );
+  assert.equal(config.provider, 'github');
+  assert.equal(config.owner, 'KratosHome');
+  assert.equal(config.repo, 'limit');
+  assert.equal(config.publisherName, undefined);
 });
 
 test('release validation requires matching Windows, universal Mac and updater metadata', async (t) => {

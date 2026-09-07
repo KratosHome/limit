@@ -6,3 +6,5 @@ release/
 *.log
 .vite/
 graphify-out/
+installers/*
+!installers/README.md

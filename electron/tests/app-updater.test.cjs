@@ -114,6 +114,95 @@ test('downloads in the background and keeps the downloaded update until quit', a
   h.controller.dispose();
 });
 
+test('manual mode checks for newer releases without downloading or installing', async () => {
+  let quitPreparations = 0;
+  const h = harness({
+    manualInstall: true,
+    prepareToQuit: () => {
+      quitPreparations += 1;
+    },
+  });
+  let checks = 0;
+  let downloads = 0;
+  h.updater.downloadUpdate = async () => {
+    downloads += 1;
+    return ['/tmp/update.zip'];
+  };
+  h.updater.checkForUpdates = async () => {
+    checks += 1;
+    const version = `0.${checks + 1}.0`;
+    h.updater.emit('update-available', { version });
+    return {
+      isUpdateAvailable: true,
+      downloadPromise: h.updater.autoDownload
+        ? h.updater.downloadUpdate()
+        : null,
+    };
+  };
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  assert.equal(h.updater.autoDownload, false);
+  assert.equal(h.updater.autoInstallOnAppQuit, false);
+  assert.deepEqual(h.controller.getState(), {
+    status: 'available',
+    version: '0.2.0',
+  });
+  assert.equal(h.controller.installUpdate(), false);
+
+  await h.controller.checkForUpdates();
+  assert.deepEqual(h.controller.getState(), {
+    status: 'available',
+    version: '0.3.0',
+  });
+  const timer = [...h.intervals.values()][0];
+  timer.callback();
+  await h.controller.checkForUpdates();
+  assert.deepEqual(h.controller.getState(), {
+    status: 'available',
+    version: '0.4.0',
+  });
+  assert.equal(checks, 3);
+  assert.equal(downloads, 0);
+  assert.equal(h.installs, 0);
+  assert.equal(quitPreparations, 0);
+  assert.equal(
+    h.states.some((state) => state.status === 'downloading'),
+    false,
+  );
+  assert.equal(
+    h.states.some((state) => state.status === 'downloaded'),
+    false,
+  );
+  h.controller.dispose();
+});
+
+test('manual mode retries failed release checks without enabling native installation', async () => {
+  const h = harness({ manualInstall: true });
+  let checks = 0;
+  h.updater.checkForUpdates = async () => {
+    checks += 1;
+    if (checks === 1) throw new Error('release server unavailable');
+    h.updater.emit('update-available', { version: '0.2.0' });
+    return { isUpdateAvailable: true };
+  };
+  await h.controller.start();
+  assert.equal(await h.controller.checkForUpdates(), false);
+  assert.equal(h.controller.getState().status, 'error');
+  assert.equal(await h.controller.checkForUpdates(), true);
+  assert.deepEqual(h.controller.getState(), {
+    status: 'available',
+    version: '0.2.0',
+  });
+  h.updater.emit('download-progress', { percent: 100 });
+  h.updater.emit('update-downloaded', { version: '0.2.0' });
+  assert.equal(h.controller.getState().status, 'available');
+  assert.equal(h.controller.installUpdate(), false);
+  assert.equal(h.installs, 0);
+  assert.equal(h.updater.autoDownload, false);
+  assert.equal(h.updater.autoInstallOnAppQuit, false);
+  h.controller.dispose();
+});
+
 test('failed checks and downloads are caught and can be retried', async () => {
   const h = harness();
   let checks = 0;
