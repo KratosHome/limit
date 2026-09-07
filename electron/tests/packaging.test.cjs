@@ -8,6 +8,7 @@ const { Arch } = require('electron-builder');
 const buildConfig = require('../../scripts/electron-builder.base.cjs');
 const {
   electronFuseConfig,
+  macOSNotificationPermissionHelperPath,
   packagedElectronPath,
   validateWindowsBinding,
 } = require('../../scripts/electron-builder-after-pack.cjs');
@@ -91,5 +92,29 @@ test('packaging resolves platform executables from stable builder metadata', () 
       electronPlatformName: 'linux',
     }),
     path.join(path.sep, 'package', 'limit app'),
+  );
+});
+
+test('the native notification bridge is signed before the Mac app executable', () => {
+  const context = {
+    appOutDir: path.join(path.sep, 'package'),
+    electronPlatformName: 'darwin',
+    packager: { appInfo: { productFilename: 'Limit' } },
+  };
+  const appPath = packagedElectronPath(context);
+  const helperPath = macOSNotificationPermissionHelperPath(context);
+  const executablePath = path.join(appPath, 'Contents', 'MacOS', 'Limit');
+  assert.equal(
+    helperPath,
+    path.join(
+      appPath,
+      'Contents',
+      'Resources',
+      'native',
+      'LimitNotificationPermission.node',
+    ),
+  );
+  assert.ok(
+    helperPath.split(path.sep).length > executablePath.split(path.sep).length,
   );
 });

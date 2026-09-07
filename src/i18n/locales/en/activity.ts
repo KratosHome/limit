@@ -25,7 +25,11 @@ export default {
   expand: 'Expand',
   collapse: 'Collapse',
   share: '{{value}} of total time',
-  perDay: '{{duration}} / day',
+  perPeriod: {
+    day: '{{duration}} / day',
+    week: '{{duration}} / week',
+    month: '{{duration}} / month',
+  },
   addLimit: '+ Limit',
   emptyTitle: 'Nothing found',
   emptyDescription: 'Try another name or reset the category filter.',

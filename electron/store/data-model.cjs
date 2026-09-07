@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const SITE_LIMIT_ID_PREFIX = 'limit-site:v1:';
 
 const DEFAULT_DATA = Object.freeze({
-  schemaVersion: 7,
+  schemaVersion: 8,
   usageByDay: {},
   limits: {},
   settings: {
@@ -14,6 +14,13 @@ const DEFAULT_DATA = Object.freeze({
     launchAtLogin: false,
     idleThresholdSeconds: 60,
   },
+});
+
+const LIMIT_PERIODS = Object.freeze(['day', 'week', 'month']);
+const LIMIT_MAX_MINUTES = Object.freeze({
+  day: 1440,
+  week: 10080,
+  month: 44640,
 });
 
 const CATEGORY_IDS = Object.freeze([
@@ -115,6 +122,38 @@ function normalizeSiteDomain(value) {
   return domain;
 }
 
+function isLimitPeriod(value) {
+  return LIMIT_PERIODS.includes(value);
+}
+
+function normalizeLimitPeriod(value) {
+  return isLimitPeriod(value) ? value : 'day';
+}
+
+function limitMaximumMinutes(period) {
+  return LIMIT_MAX_MINUTES[normalizeLimitPeriod(period)];
+}
+
+function normalizeLimits(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([limitId, rawLimit]) => {
+      if (!rawLimit || typeof rawLimit !== 'object' || Array.isArray(rawLimit))
+        return [];
+      return [
+        [
+          limitId,
+          {
+            ...rawLimit,
+            period: normalizeLimitPeriod(rawLimit.period),
+            limitMinutes: rawLimit.limitMinutes ?? rawLimit.dailyLimitMinutes,
+          },
+        ],
+      ];
+    }),
+  );
+}
+
 function createLimitId(appId, siteDomain) {
   const normalizedAppId = String(appId);
   const domain = normalizeSiteDomain(siteDomain);
@@ -153,12 +192,7 @@ function normalizeData(value, defaultLanguage = 'uk') {
       Number.isInteger(value.schemaVersion) ? value.schemaVersion : 1,
     ),
     usageByDay: normalizeUsageByDay(value.usageByDay),
-    limits:
-      value.limits &&
-      typeof value.limits === 'object' &&
-      !Array.isArray(value.limits)
-        ? value.limits
-        : {},
+    limits: normalizeLimits(value.limits),
     settings: {
       language:
         settings.language === 'en' || settings.language === 'uk'
@@ -181,12 +215,17 @@ function normalizeData(value, defaultLanguage = 'uk') {
 
 module.exports = {
   CATEGORY_IDS,
+  LIMIT_MAX_MINUTES,
+  LIMIT_PERIODS,
   SITE_LIMIT_ID_PREFIX,
   cloneDefaultData,
   createLimitId,
   getOwn,
   guessCategory,
+  isLimitPeriod,
+  limitMaximumMinutes,
   normalizeCategory,
   normalizeData,
+  normalizeLimitPeriod,
   normalizeSiteDomain,
 };

@@ -26,12 +26,17 @@ export default {
     empty: 'Open a few apps and your statistics will appear here.',
   },
   limits: {
-    title: 'Today’s limits',
-    subtitle: 'Progress toward your daily goals',
+    title: 'Current limits',
+    subtitle: 'Progress in each active limit period',
     manage: 'Manage',
     reached: 'Limit reached',
     close: 'Approaching limit',
     ok: 'Within limit',
-    addFirst: 'Add your first daily limit',
+    periodTotal: {
+      day: '{{limit}} / day',
+      week: '{{limit}} / week',
+      month: '{{limit}} / month',
+    },
+    addFirst: 'Add your first limit',
   },
 } as const;

@@ -229,6 +229,9 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                 ? (app.seconds / data.totalSeconds) * 100
                 : 0;
               const limitSeconds = (app.limitMinutes || 0) * 60;
+              const limitPeriod = app.limitPeriod ?? 'day';
+              const hasEnabledLimit =
+                app.limitEnabled && Boolean(app.limitMinutes);
               const limitProgress = limitSeconds
                 ? Math.min(100, (app.seconds / limitSeconds) * 100)
                 : 0;
@@ -302,8 +305,8 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                       {app.launches}
                     </span>
                     <div role="cell" className="flex items-center justify-end">
-                      {app.limitEnabled &&
-                      app.limitMinutes &&
+                      {hasEnabledLimit &&
+                      limitPeriod === 'day' &&
                       data.days.length === 1 ? (
                         <Button
                           variant="ghost"
@@ -324,14 +327,14 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                             />
                           </div>
                         </Button>
-                      ) : app.limitEnabled && app.limitMinutes ? (
+                      ) : hasEnabledLimit ? (
                         <Button
                           variant="subtle"
                           size="none"
                           onClick={() => onSetLimit(app)}
                         >
-                          {t('perDay', {
-                            duration: formatDuration(app.limitMinutes * 60),
+                          {t(`perPeriod.${limitPeriod}`, {
+                            duration: formatDuration(limitSeconds),
                           })}
                         </Button>
                       ) : (

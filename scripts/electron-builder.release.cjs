@@ -26,10 +26,23 @@ if (targetsMac && !hasNotarizationCredentials) {
 
 module.exports = {
   ...build,
+  directories: { ...build.directories, output: 'release/publish' },
+  artifactName: 'Limit-${version}-${os}-${arch}.${ext}',
+  extraMetadata: { ...build.extraMetadata, limitAutoUpdate: true },
   forceCodeSigning: true,
+  publish: {
+    provider: 'github',
+    owner: 'KratosHome',
+    repo: 'limit',
+    releaseType: 'draft',
+  },
   afterSign: 'scripts/electron-builder-after-sign.cjs',
   mac: {
     ...build.mac,
+    target: [
+      { target: 'dmg', arch: ['universal'] },
+      { target: 'zip', arch: ['universal'] },
+    ],
     type: 'distribution',
     notarize: true,
   },

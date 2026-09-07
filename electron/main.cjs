@@ -19,13 +19,18 @@ const {
   createAccessibilityPermissionController,
 } = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
-const { UsageStore, localDay } = require('./store.cjs');
+const { createAppUpdater } = require('./app-updater.cjs');
+const { limitAutoUpdate } = require('../package.json');
+const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { desktopMessages, resolveDesktopLanguage } = require('./i18n.cjs');
 const {
   isLimitNotificationDue,
   notificationKey,
-  pruneDayScopedCache,
+  notificationKeyMatchesLimit,
+  notificationKindsResetByLimitChange,
+  parseNotificationKey,
+  pruneBoundedCache,
 } = require('./limit-notification-rules.cjs');
 const {
   getWindowsNotificationSetting,
@@ -37,10 +42,11 @@ let isQuitting = false;
 let store = null;
 let tracker = null;
 let accessibilityPermission = null;
+let appUpdater = null;
 let updateTimer = null;
 let screenLocked = false;
 let suspended = false;
-const pendingAlerts = new Set();
+const pendingAlerts = new Map();
 const notificationRetryAt = new Map();
 const inAppAlertsShown = new Set();
 const queuedInAppAlerts = new Map();
@@ -226,6 +232,32 @@ function refreshTrayMenu() {
   const settings = store.getSettings();
   const trackingEnabled = settings.trackingEnabled;
   const t = desktopMessages(settings.language);
+  const updateState = appUpdater?.getState();
+  const updateMenu =
+    updateState && updateState.status !== 'disabled'
+      ? [
+          {
+            label:
+              updateState.status === 'downloaded'
+                ? t.installUpdate(updateState.version)
+                : updateState.status === 'checking'
+                  ? t.checkingForUpdates
+                  : updateState.status === 'downloading'
+                    ? t.downloadingUpdate
+                    : updateState.status === 'error'
+                      ? t.retryUpdate
+                      : t.checkForUpdates,
+            enabled: !['checking', 'downloading'].includes(updateState.status),
+            click: () => {
+              if (appUpdater.getState().status === 'downloaded') {
+                appUpdater.installUpdate();
+              } else {
+                void appUpdater.checkForUpdates();
+              }
+            },
+          },
+        ]
+      : [];
   tray.setToolTip(t.trayTooltip);
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -238,6 +270,9 @@ function refreshTrayMenu() {
           refreshTrayMenu();
         },
       },
+      { type: 'separator' },
+      { label: t.appVersion(app.getVersion()), enabled: false },
+      ...updateMenu,
       { type: 'separator' },
       {
         label: t.quit,
@@ -263,7 +298,8 @@ function resolveMacOSNotificationPermissionHelper() {
     );
     const helperPath = path.join(
       contentsPath,
-      'MacOS',
+      'Resources',
+      'native',
       'LimitNotificationPermission.node',
     );
     if (
@@ -739,9 +775,30 @@ function flushQueuedInAppAlerts() {
     if (!areLimitNotificationsEnabled()) queuedInAppAlerts.clear();
     return;
   }
-  for (const [key, payload] of queuedInAppAlerts) {
+  for (const [key] of queuedInAppAlerts) {
+    const scope = parseNotificationKey(key);
+    const eligible = scope
+      ? getEligibleLimitNotification(
+          scope.limitId,
+          scope.kind,
+          scope.periodKey,
+          new Date(),
+          { ignoreDeliveryMarker: true },
+        )
+      : null;
+    if (!eligible) {
+      queuedInAppAlerts.delete(key);
+      continue;
+    }
     try {
-      mainWindow.webContents.send('limits:notification', payload);
+      mainWindow.webContents.send(
+        'limits:notification',
+        buildLimitNotificationPayload(
+          eligible.limit,
+          scope.kind,
+          eligible.usedSeconds,
+        ),
+      );
       queuedInAppAlerts.delete(key);
       inAppAlertsShown.add(key);
     } catch (error) {
@@ -787,30 +844,49 @@ function buildLimitNotificationPayload(limit, kind, usedSeconds) {
     appName: targetName,
     title: isWarning ? t.warningTitle(targetName) : t.reachedTitle(targetName),
     message: isWarning
-      ? t.warningMessage(Math.max(1, limit.dailyLimitMinutes - usedMinutes))
-      : t.reachedMessage(usedMinutes, limit.dailyLimitMinutes),
+      ? t.warningMessage(Math.max(1, limit.limitMinutes - usedMinutes))
+      : t.reachedMessage(usedMinutes, limit.limitMinutes, limit.period),
   };
 }
 
-function getEligibleLimitNotification(limitId, kind, day, date = new Date()) {
-  if (!store || localDay(date) !== day) return null;
+function getEligibleLimitNotification(
+  limitId,
+  kind,
+  periodKey,
+  date = new Date(),
+  { ignoreDeliveryMarker = false } = {},
+) {
+  if (!store) return null;
   const limit = store.getLimit(limitId);
   if (!limit) return null;
-  const usedSeconds = store.getTodayLimitUsage(limit, date);
-  return isLimitNotificationDue(limit, kind, usedSeconds, day)
+  if (limitPeriodRange(limit.period, date).key !== periodKey) return null;
+  const usedSeconds = store.getCurrentLimitUsage(limit, date);
+  const evaluatedLimit = ignoreDeliveryMarker
+    ? {
+        ...limit,
+        [kind === 'warning' ? 'lastWarningDate' : 'lastReachedDate']: null,
+      }
+    : limit;
+  return isLimitNotificationDue(
+    evaluatedLimit,
+    kind,
+    usedSeconds,
+    localDay(date),
+    periodKey,
+  )
     ? { limit, usedSeconds }
     : null;
 }
 
-function pruneLimitNotificationCaches(day) {
-  pruneDayScopedCache(notificationRetryAt, day, 1024);
-  pruneDayScopedCache(inAppAlertsShown, day, 1024);
-  pruneDayScopedCache(queuedInAppAlerts, day, 256);
-  pruneDayScopedCache(deliveredAlerts, day, 1024);
+function pruneLimitNotificationCaches() {
+  pruneBoundedCache(notificationRetryAt, 1024);
+  pruneBoundedCache(inAppAlertsShown, 1024);
+  pruneBoundedCache(queuedInAppAlerts, 256);
+  pruneBoundedCache(deliveredAlerts, 1024);
 }
 
-function systemLimitNotificationId(limitId, kind, day) {
-  return `limit-${day}-${kind}-${crypto
+function systemLimitNotificationId(limitId, kind, periodKey) {
+  return `limit-${periodKey}-${kind}-${crypto
     .createHash('sha256')
     .update(limitId)
     .digest('base64url')
@@ -821,37 +897,62 @@ function getLimitNotificationRevision(limitId) {
   return limitNotificationRevisions.get(limitId) || 0;
 }
 
-function clearLimitNotificationState(limitId, day = localDay()) {
+function clearLimitNotificationState(
+  limitId,
+  { dedupeKinds = ['warning', 'reached'] } = {},
+) {
   limitNotificationRevisions.set(limitId, ++nextLimitNotificationRevision);
-  for (const kind of ['warning', 'reached']) {
-    const key = notificationKey(day, limitId, kind);
-    notificationRetryAt.delete(key);
-    inAppAlertsShown.delete(key);
-    queuedInAppAlerts.delete(key);
-    deliveredAlerts.delete(key);
-    const notificationId = systemLimitNotificationId(limitId, kind, day);
-    const notification = activeSystemNotifications.get(notificationId);
-    if (notification) {
+  for (const cache of [pendingAlerts, notificationRetryAt, queuedInAppAlerts]) {
+    for (const key of cache.keys()) {
+      if (notificationKeyMatchesLimit(key, limitId)) cache.delete(key);
+    }
+  }
+  const dedupeKindSet = new Set(dedupeKinds);
+  for (const cache of [inAppAlertsShown, deliveredAlerts]) {
+    for (const key of cache.keys()) {
+      const scope = parseNotificationKey(key);
+      if (scope?.limitId === limitId && dedupeKindSet.has(scope.kind))
+        cache.delete(key);
+    }
+  }
+  const limitHash = crypto
+    .createHash('sha256')
+    .update(limitId)
+    .digest('base64url')
+    .slice(0, 24);
+  for (const [notificationId, notification] of activeSystemNotifications) {
+    if (notificationId.endsWith(`-${limitHash}`)) {
       activeSystemNotifications.delete(notificationId);
       notification.close();
     }
   }
 }
 
-async function notifyLimit(limitId, kind, day, revision) {
+function isCurrentLimitNotificationAttempt(limitId, periodKey, revision) {
+  if (
+    revision !== getLimitNotificationRevision(limitId) ||
+    !areLimitNotificationsEnabled()
+  )
+    return false;
+  const limit = store?.getLimit(limitId);
+  return (
+    Boolean(limit) &&
+    limitPeriodRange(limit.period, new Date()).key === periodKey
+  );
+}
+
+async function notifyLimit(limitId, kind, periodKey, revision) {
   const isCurrentAttempt = () =>
-    revision === getLimitNotificationRevision(limitId) &&
-    areLimitNotificationsEnabled() &&
-    localDay() === day;
+    isCurrentLimitNotificationAttempt(limitId, periodKey, revision);
   if (!isCurrentAttempt()) return { delivered: false, shouldRetry: false };
-  let eligible = getEligibleLimitNotification(limitId, kind, day);
+  let eligible = getEligibleLimitNotification(limitId, kind, periodKey);
   if (!eligible) return { delivered: false, shouldRetry: false };
   let payload = buildLimitNotificationPayload(
     eligible.limit,
     kind,
     eligible.usedSeconds,
   );
-  const alertKey = notificationKey(day, limitId, kind);
+  const alertKey = notificationKey(periodKey, limitId, kind);
   emitInAppLimitNotification(alertKey, payload);
 
   const authorized = await ensureSystemNotificationAuthorization({
@@ -865,7 +966,7 @@ async function notifyLimit(limitId, kind, day, revision) {
       shouldRetry: isCurrentAttempt(),
     };
   }
-  eligible = getEligibleLimitNotification(limitId, kind, day);
+  eligible = getEligibleLimitNotification(limitId, kind, periodKey);
   if (!eligible) return { delivered: false, shouldRetry: false };
   payload = buildLimitNotificationPayload(
     eligible.limit,
@@ -876,37 +977,47 @@ async function notifyLimit(limitId, kind, day, revision) {
     title: payload.title,
     body: payload.message,
     context: `limit ${limitId} (${kind})`,
-    id: systemLimitNotificationId(limitId, kind, day),
+    id: systemLimitNotificationId(limitId, kind, periodKey),
     isCurrent: isCurrentAttempt,
   });
   return { delivered, shouldRetry: !delivered && isCurrentAttempt() };
 }
 
-async function attemptLimitNotification(limitId, kind, day) {
-  pruneLimitNotificationCaches(day);
-  const key = notificationKey(day, limitId, kind);
+async function attemptLimitNotification(limitId, kind, periodKey) {
+  pruneLimitNotificationCaches();
+  const key = notificationKey(periodKey, limitId, kind);
+  const revision = getLimitNotificationRevision(limitId);
+  const retry = notificationRetryAt.get(key);
+  const clearRetry = () => {
+    if (notificationRetryAt.get(key)?.revision === revision)
+      notificationRetryAt.delete(key);
+  };
+  const scheduleRetry = () =>
+    notificationRetryAt.set(key, {
+      at: Date.now() + 5 * 60_000,
+      revision,
+    });
   if (
-    pendingAlerts.has(key) ||
+    pendingAlerts.get(key) === revision ||
     deliveredAlerts.has(key) ||
-    (notificationRetryAt.get(key) || 0) > Date.now()
+    (retry?.revision === revision ? retry.at : 0) > Date.now()
   )
     return;
-  pendingAlerts.add(key);
-  const revision = getLimitNotificationRevision(limitId);
+  pendingAlerts.set(key, revision);
   try {
-    const result = await notifyLimit(limitId, kind, day, revision);
+    const result = await notifyLimit(limitId, kind, periodKey, revision);
     if (revision !== getLimitNotificationRevision(limitId)) {
-      notificationRetryAt.delete(key);
+      clearRetry();
       return;
     }
     if (result.delivered) {
       const date = new Date();
-      if (!getEligibleLimitNotification(limitId, kind, day, date)) {
-        notificationRetryAt.delete(key);
+      if (!getEligibleLimitNotification(limitId, kind, periodKey, date)) {
+        clearRetry();
         return;
       }
       deliveredAlerts.add(key);
-      notificationRetryAt.delete(key);
+      clearRetry();
       try {
         store.markLimitNotification(limitId, kind, date);
       } catch (error) {
@@ -917,24 +1028,24 @@ async function attemptLimitNotification(limitId, kind, day) {
         broadcastUpdate({ reason: 'storage-error' });
       }
     } else if (result.shouldRetry && areLimitNotificationsEnabled()) {
-      notificationRetryAt.set(key, Date.now() + 5 * 60_000);
+      scheduleRetry();
     } else {
-      notificationRetryAt.delete(key);
+      clearRetry();
     }
   } catch (error) {
     console.error('[notifications] limit notification attempt failed', error);
-    if (areLimitNotificationsEnabled() && localDay() === day)
-      notificationRetryAt.set(key, Date.now() + 5 * 60_000);
+    if (isCurrentLimitNotificationAttempt(limitId, periodKey, revision))
+      scheduleRetry();
   } finally {
-    pendingAlerts.delete(key);
+    if (pendingAlerts.get(key) === revision) pendingAlerts.delete(key);
   }
 }
 
 function checkLimit(sample) {
   if (!areLimitNotificationsEnabled()) return;
   const date = new Date();
-  const day = localDay(date);
-  pruneLimitNotificationCaches(day);
+  const dayKey = localDay(date);
+  pruneLimitNotificationCaches();
   const limits = store
     .getLimits()
     .filter(
@@ -943,11 +1054,16 @@ function checkLimit(sample) {
         (!limit.siteDomain || limit.siteDomain === sample.site?.domain),
     );
   for (const limit of limits) {
-    const usedSeconds = store.getTodayLimitUsage(limit, date);
-    if (isLimitNotificationDue(limit, 'warning', usedSeconds, day))
-      void attemptLimitNotification(limit.id, 'warning', day);
-    if (isLimitNotificationDue(limit, 'reached', usedSeconds, day))
-      void attemptLimitNotification(limit.id, 'reached', day);
+    const periodKey = limitPeriodRange(limit.period, date).key;
+    const usedSeconds = store.getCurrentLimitUsage(limit, date);
+    if (
+      isLimitNotificationDue(limit, 'warning', usedSeconds, dayKey, periodKey)
+    )
+      void attemptLimitNotification(limit.id, 'warning', periodKey);
+    if (
+      isLimitNotificationDue(limit, 'reached', usedSeconds, dayKey, periodKey)
+    )
+      void attemptLimitNotification(limit.id, 'reached', periodKey);
   }
 }
 
@@ -1158,8 +1274,13 @@ function registerIpc() {
     return settings;
   });
   handleIpc('limits:save', (limit) => {
+    const previousLimits = store.getLimits();
     const saved = store.saveLimit(limit);
-    clearLimitNotificationState(saved.id);
+    const previous =
+      previousLimits.find((candidate) => candidate.id === saved.id) || null;
+    clearLimitNotificationState(saved.id, {
+      dedupeKinds: notificationKindsResetByLimitChange(previous, saved),
+    });
     if (saved.enabled && areLimitNotificationsEnabled()) {
       void ensureSystemNotificationAuthorization({
         requestIfNeeded: true,
@@ -1271,6 +1392,36 @@ if (hasSingleInstanceLock)
     registerIpc();
     createWindow();
     createTray();
+    const updatesEnabled =
+      app.isPackaged &&
+      limitAutoUpdate === true &&
+      !isSignedDevelopment &&
+      ['darwin', 'win32'].includes(process.platform);
+    const updateLogger = updatesEnabled
+      ? require('electron-log/main')
+      : console;
+    if (updatesEnabled) {
+      updateLogger.transports.file.resolvePathFn = () =>
+        path.join(app.getPath('userData'), 'logs', 'updates.log');
+      updateLogger.transports.file.maxSize = 1024 * 1024;
+    }
+    appUpdater = createAppUpdater({
+      app,
+      enabled: updatesEnabled,
+      autoUpdater: updatesEnabled
+        ? require('electron-updater').autoUpdater
+        : null,
+      logger: updateLogger,
+      onStateChange: refreshTrayMenu,
+      prepareToQuit: () => {
+        isQuitting = true;
+        return () => {
+          isQuitting = false;
+        };
+      },
+    });
+    appUpdater.start();
+    refreshTrayMenu();
     tracker.on('sample', checkLimit);
     tracker.on('updated', () => {
       if (updateTimer) return;
@@ -1313,6 +1464,7 @@ if (hasSingleInstanceLock) {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  appUpdater?.dispose();
   tracker?.stop();
   store?.close();
 });

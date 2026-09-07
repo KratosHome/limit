@@ -2,7 +2,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { AppError, ERROR_CODES } = require('./errors.cjs');
-const { createLimitId } = require('./store/data-model.cjs');
+const {
+  createLimitId,
+  limitMaximumMinutes,
+  normalizeLimitPeriod,
+} = require('./store/data-model.cjs');
 
 class UnsupportedDatabaseVersionError extends Error {}
 class DatabaseMigrationError extends Error {}
@@ -267,6 +271,47 @@ class SQLiteStorage {
           }
         },
       },
+      {
+        version: 8,
+        name: 'limit_periods',
+        up: `
+          CREATE TABLE limits_v8 (
+            app_id TEXT PRIMARY KEY,
+            app_name TEXT NOT NULL,
+            period TEXT NOT NULL DEFAULT 'day'
+              CHECK (period IN ('day', 'week', 'month')),
+            limit_minutes INTEGER NOT NULL CHECK (limit_minutes >= 1),
+            warning_minutes INTEGER NOT NULL
+              CHECK (warning_minutes >= 0 AND warning_minutes < limit_minutes),
+            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+            last_warning_date TEXT,
+            last_reached_date TEXT,
+            paused_date TEXT,
+            source_app_id TEXT,
+            site_domain TEXT,
+            CHECK (
+              (period = 'day' AND limit_minutes <= 1440)
+              OR (period = 'week' AND limit_minutes <= 10080)
+              OR (period = 'month' AND limit_minutes <= 44640)
+            )
+          ) STRICT;
+
+          INSERT INTO limits_v8 (
+            app_id, app_name, period, limit_minutes, warning_minutes, enabled,
+            last_warning_date, last_reached_date, paused_date,
+            source_app_id, site_domain
+          )
+          SELECT
+            app_id, app_name, 'day', daily_limit_minutes,
+            MIN(warning_minutes, daily_limit_minutes - 1), enabled,
+            last_warning_date, last_reached_date, paused_date, source_app_id,
+            site_domain
+          FROM limits;
+
+          DROP TABLE limits;
+          ALTER TABLE limits_v8 RENAME TO limits;
+        `,
+      },
     ];
     const latestVersion = migrations.at(-1).version;
     const currentVersion =
@@ -466,26 +511,33 @@ class SQLiteStorage {
 
       const insertLimit = this.database.prepare(`
         INSERT INTO limits (
-          app_id, source_app_id, site_domain, app_name, daily_limit_minutes, warning_minutes, enabled,
+          app_id, source_app_id, site_domain, app_name, period, limit_minutes, warning_minutes, enabled,
           last_warning_date, last_reached_date, paused_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const limit of Object.values(data.limits)) {
         if (!limit?.appId || !limit?.appName) continue;
         const siteDomain = this.normalizeSiteDomain(limit.siteDomain);
-        const dailyLimitMinutes = Math.min(
-          1440,
-          Math.max(1, Math.round(Number(limit.dailyLimitMinutes) || 1)),
+        const period = normalizeLimitPeriod(limit.period);
+        const limitMinutes = Math.min(
+          limitMaximumMinutes(period),
+          Math.max(
+            1,
+            Math.round(
+              Number(limit.limitMinutes ?? limit.dailyLimitMinutes) || 1,
+            ),
+          ),
         );
         insertLimit.run(
           createLimitId(limit.appId, siteDomain),
           limit.appId,
           siteDomain,
           limit.appName,
-          dailyLimitMinutes,
+          period,
+          limitMinutes,
           Math.min(
             Math.max(0, Math.round(Number(limit.warningMinutes) || 0)),
-            Math.max(0, dailyLimitMinutes - 1),
+            Math.max(0, limitMinutes - 1),
           ),
           Number(limit.enabled !== false),
           limit.lastWarningDate || null,
@@ -571,7 +623,8 @@ class SQLiteStorage {
           appId: row.source_app_id || row.app_id,
           appName: row.app_name,
           siteDomain: row.site_domain || null,
-          dailyLimitMinutes: row.daily_limit_minutes,
+          period: normalizeLimitPeriod(row.period),
+          limitMinutes: row.limit_minutes,
           warningMinutes: row.warning_minutes,
           enabled: Boolean(row.enabled),
           lastWarningDate: row.last_warning_date,

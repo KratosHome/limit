@@ -33,7 +33,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
     (limit) =>
       limit.enabled &&
       limit.pausedDate !== data.today &&
-      (data.todayUsage[limit.id] || 0) >= limit.dailyLimitMinutes * 60,
+      (data.limitUsage[limit.id] || 0) >= limit.limitMinutes * 60,
   ).length;
 
   return (
@@ -96,10 +96,10 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
       {data.limits.length ? (
         <div className="grid grid-cols-2 gap-4">
           {data.limits.map((limit) => {
-            const used = data.todayUsage[limit.id] || 0;
+            const used = data.limitUsage[limit.id] || 0;
             const percentage = Math.min(
               100,
-              (used / (limit.dailyLimitMinutes * 60)) * 100,
+              (used / (limit.limitMinutes * 60)) * 100,
             );
             const pausedToday = limit.pausedDate === data.today;
             const state =
@@ -165,7 +165,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                     </span>
                     <span className="ml-1.5 text-[10px] font-semibold text-[var(--muted)]">
                       {t('usedOf', {
-                        limit: formatMinutes(limit.dailyLimitMinutes),
+                        limit: formatMinutes(limit.limitMinutes),
                       })}
                     </span>
                   </div>
@@ -183,7 +183,7 @@ export function Limits({ data, onAdd, onEdit, onPause }: LimitsProps) {
                 <div className="mt-5 flex items-center justify-between border-t border-[var(--border)] pt-4">
                   <div className="flex items-center gap-4 text-[10px] font-semibold text-[var(--muted)]">
                     <span className="inline-flex items-center gap-1.5">
-                      <TimerReset size={13} /> {t('daily')}
+                      <TimerReset size={13} /> {t(`period.${limit.period}`)}
                     </span>
                     <span className="inline-flex items-center gap-1.5">
                       <BellRing size={13} />{' '}

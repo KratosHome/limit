@@ -5,11 +5,24 @@ const messages = {
     pauseTracking: 'Призупинити трекінг',
     resumeTracking: 'Відновити трекінг',
     quit: 'Вийти',
+    appVersion: (version) => `Версія ${version}`,
+    checkForUpdates: 'Перевірити оновлення',
+    checkingForUpdates: 'Перевіряємо оновлення…',
+    downloadingUpdate: 'Завантажуємо оновлення…',
+    installUpdate: (version) => `Перезапустити й оновити до ${version}`,
+    retryUpdate: 'Не вдалося оновити — спробувати ще раз',
     warningTitle: (appName) => `Наближається ліміт ${appName}`,
     reachedTitle: (appName) => `Ліміт ${appName} досягнуто`,
     warningMessage: (remaining) => `Залишилося ${remaining} хв.`,
-    reachedMessage: (used, limit) =>
-      `Сьогодні використано ${used} хв. із ${limit} хв.`,
+    reachedMessage: (used, limit, period = 'day') => {
+      const scope =
+        period === 'week'
+          ? 'Цього тижня'
+          : period === 'month'
+            ? 'Цього місяця'
+            : 'Сьогодні';
+      return `${scope} використано ${used} хв. із ${limit} хв.`;
+    },
     notificationRequestTitle: 'Сповіщення Limit',
     notificationRequestBody:
       'Дозвольте сповіщення, щоб Limit попереджав про завершення часу.',
@@ -26,10 +39,24 @@ const messages = {
     pauseTracking: 'Pause tracking',
     resumeTracking: 'Resume tracking',
     quit: 'Quit',
+    appVersion: (version) => `Version ${version}`,
+    checkForUpdates: 'Check for updates',
+    checkingForUpdates: 'Checking for updates…',
+    downloadingUpdate: 'Downloading update…',
+    installUpdate: (version) => `Restart and update to ${version}`,
+    retryUpdate: 'Update failed — try again',
     warningTitle: (appName) => `${appName} is approaching its limit`,
     reachedTitle: (appName) => `${appName} reached its limit`,
     warningMessage: (remaining) => `${remaining} min remaining.`,
-    reachedMessage: (used, limit) => `${used} of ${limit} min used today.`,
+    reachedMessage: (used, limit, period = 'day') => {
+      const scope =
+        period === 'week'
+          ? 'this week'
+          : period === 'month'
+            ? 'this month'
+            : 'today';
+      return `${used} of ${limit} min used ${scope}.`;
+    },
     notificationRequestTitle: 'Limit notifications',
     notificationRequestBody:
       'Allow notifications so Limit can warn you when time runs out.',

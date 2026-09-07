@@ -28,7 +28,11 @@ export default {
   expand: 'Розгорнути',
   collapse: 'Згорнути',
   share: '{{value}} загального часу',
-  perDay: '{{duration}} / день',
+  perPeriod: {
+    day: '{{duration}} / день',
+    week: '{{duration}} / тиждень',
+    month: '{{duration}} / місяць',
+  },
   addLimit: '+ Ліміт',
   emptyTitle: 'Нічого не знайдено',
   emptyDescription: 'Спробуйте іншу назву або скиньте фільтр категорії.',

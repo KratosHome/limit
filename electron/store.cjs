@@ -8,11 +8,19 @@ const {
   createLimitId,
   getOwn,
   guessCategory,
+  isLimitPeriod,
+  limitMaximumMinutes,
   normalizeCategory,
   normalizeData,
+  normalizeLimitPeriod,
   normalizeSiteDomain,
 } = require('./store/data-model.cjs');
-const { addDays, enumerateDays, localDay } = require('./store/date-utils.cjs');
+const {
+  addDays,
+  enumerateDays,
+  limitPeriodRange,
+  localDay,
+} = require('./store/date-utils.cjs');
 const {
   deleteLimit: deleteLimitRecord,
   writeLimit,
@@ -25,6 +33,7 @@ const {
   aggregateUsage,
   compareText,
   getAppIconSource,
+  getCurrentLimitUsage,
   getKnownApps,
 } = require('./store/usage-queries.cjs');
 
@@ -151,9 +160,11 @@ class UsageStore {
   }
 
   getTodayLimitUsage(limit, date = new Date()) {
-    return limit?.siteDomain
-      ? this.getTodaySiteUsage(limit.appId, limit.siteDomain, date)
-      : this.getTodayUsage(limit?.appId, date);
+    return this.getCurrentLimitUsage(limit, date);
+  }
+
+  getCurrentLimitUsage(limit, date = new Date()) {
+    return getCurrentLimitUsage(this.data, limit, date);
   }
 
   getKnownApps() {
@@ -237,11 +248,11 @@ class UsageStore {
     const limit = getOwn(this.data.limits, limitId);
     if (!limit) return;
     const key = kind === 'warning' ? 'lastWarningDate' : 'lastReachedDate';
-    const day = localDay(date);
+    const periodKey = limitPeriodRange(limit.period, date).key;
     this.transaction(() =>
-      writeNotificationDate(this.database, limitId, kind, day),
+      writeNotificationDate(this.database, limitId, kind, periodKey),
     );
-    limit[key] = day;
+    limit[key] = periodKey;
   }
 
   getLimit(limitId) {
@@ -260,6 +271,9 @@ class UsageStore {
     const previousTo = addDays(from, -1);
     const previousFrom = addDays(previousTo, -(current.days.length - 1));
     const limits = this.getLimits();
+    const limitUsage = Object.fromEntries(
+      limits.map((limit) => [limit.id, this.getCurrentLimitUsage(limit, now)]),
+    );
     return {
       ...current,
       previousTotalSeconds: this.aggregate(previousFrom, previousTo)
@@ -269,13 +283,10 @@ class UsageStore {
       settings: this.getSettings(),
       storage: this.getStorageStatus(),
       today,
-      todayUsage: Object.fromEntries([
-        ...todayAggregate.apps.map((entry) => [entry.id, entry.seconds]),
-        ...limits.map((limit) => [
-          limit.id,
-          this.getTodayLimitUsage(limit, now),
-        ]),
-      ]),
+      todayUsage: Object.fromEntries(
+        todayAggregate.apps.map((entry) => [entry.id, entry.seconds]),
+      ),
+      limitUsage,
       updatedAt: new Date().toISOString(),
     };
   }
@@ -364,25 +375,36 @@ function createLimit(input, previous = {}) {
     input.appId.startsWith(SITE_LIMIT_ID_PREFIX)
   )
     throw new AppError(ERROR_CODES.INVALID_APP_DATA);
-  const dailyLimitMinutes = Math.round(Number(input.dailyLimitMinutes));
+  const period =
+    input.period === undefined
+      ? normalizeLimitPeriod(previous.period)
+      : normalizeLimitPeriod(input.period);
+  if (input.period !== undefined && !isLimitPeriod(input.period))
+    throw new AppError(ERROR_CODES.INVALID_LIMIT);
+  const limitMinutes = Math.round(
+    Number(input.limitMinutes ?? input.dailyLimitMinutes),
+  );
   if (
-    !Number.isFinite(dailyLimitMinutes) ||
-    dailyLimitMinutes < 1 ||
-    dailyLimitMinutes > 1440
+    !Number.isFinite(limitMinutes) ||
+    limitMinutes < 1 ||
+    limitMinutes > limitMaximumMinutes(period)
   ) {
     throw new AppError(ERROR_CODES.INVALID_LIMIT);
   }
   const warningMinutes = Math.min(
     Math.max(0, Math.round(Number(input.warningMinutes) || 0)),
-    Math.max(0, dailyLimitMinutes - 1),
+    Math.max(0, limitMinutes - 1),
   );
   const siteDomain = normalizeSiteDomain(input.siteDomain);
   if (input.siteDomain && !siteDomain)
     throw new AppError(ERROR_CODES.INVALID_APP_DATA);
   const id = createLimitId(input.appId, siteDomain);
-  const dailyThresholdChanged =
-    previous.dailyLimitMinutes !== undefined &&
-    previous.dailyLimitMinutes !== dailyLimitMinutes;
+  const previousLimitMinutes =
+    previous.limitMinutes ?? previous.dailyLimitMinutes;
+  const thresholdChanged =
+    previousLimitMinutes !== undefined &&
+    (previousLimitMinutes !== limitMinutes ||
+      normalizeLimitPeriod(previous.period) !== period);
   const warningThresholdChanged =
     previous.warningMinutes !== undefined &&
     previous.warningMinutes !== warningMinutes;
@@ -392,16 +414,15 @@ function createLimit(input, previous = {}) {
     appId: input.appId,
     appName: input.appName,
     siteDomain,
-    dailyLimitMinutes,
+    period,
+    limitMinutes,
     warningMinutes,
     enabled: input.enabled !== false,
     lastWarningDate:
-      dailyThresholdChanged || warningThresholdChanged
+      thresholdChanged || warningThresholdChanged
         ? null
         : previous.lastWarningDate || null,
-    lastReachedDate: dailyThresholdChanged
-      ? null
-      : previous.lastReachedDate || null,
+    lastReachedDate: thresholdChanged ? null : previous.lastReachedDate || null,
     pausedDate: previous.pausedDate || null,
   };
 }
@@ -412,6 +433,7 @@ module.exports = {
   addDays,
   enumerateDays,
   guessCategory,
+  limitPeriodRange,
   localDay,
   normalizeCategory,
 };

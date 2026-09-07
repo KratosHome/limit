@@ -1,7 +1,8 @@
 export default {
   dashboardLoad: 'Не вдалося завантажити статистику',
   selectApp: 'Оберіть застосунок',
-  invalidDuration: 'Вкажіть час від 1 хвилини до 24 годин',
+  invalidDuration:
+    'Вкажіть загальний час від 1 хвилини до {{max}} для цього періоду',
   saveLimit: 'Не вдалося зберегти ліміт',
   desktopApiUnavailable:
     'Desktop API недоступний. Перезапустіть Limit або перевірте preload script.',
@@ -10,7 +11,7 @@ export default {
   invalidAppId: 'Некоректний ідентифікатор застосунку',
   invalidPermission: 'Некоректний тип дозволу',
   invalidAppData: 'Некоректні дані застосунку',
-  invalidLimit: 'Ліміт має бути від 1 хвилини до 24 годин',
+  invalidLimit: 'Вкажіть коректний час для обраного періоду ліміту',
   storageRead:
     'Не вдалося прочитати локальну базу. Створено резервну копію для відновлення.',
   storageImport:

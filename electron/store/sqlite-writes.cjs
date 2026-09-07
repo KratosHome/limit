@@ -66,14 +66,15 @@ function writeLimit(database, limit) {
   database
     .prepare(
       `INSERT INTO limits (
-        app_id, source_app_id, site_domain, app_name, daily_limit_minutes, warning_minutes, enabled,
+        app_id, source_app_id, site_domain, app_name, period, limit_minutes, warning_minutes, enabled,
         last_warning_date, last_reached_date, paused_date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(app_id) DO UPDATE SET
         source_app_id = excluded.source_app_id,
         site_domain = excluded.site_domain,
         app_name = excluded.app_name,
-        daily_limit_minutes = excluded.daily_limit_minutes,
+        period = excluded.period,
+        limit_minutes = excluded.limit_minutes,
         warning_minutes = excluded.warning_minutes,
         enabled = excluded.enabled,
         last_warning_date = excluded.last_warning_date,
@@ -85,7 +86,8 @@ function writeLimit(database, limit) {
       limit.appId,
       limit.siteDomain,
       limit.appName,
-      limit.dailyLimitMinutes,
+      limit.period,
+      limit.limitMinutes,
       limit.warningMinutes,
       Number(limit.enabled),
       limit.lastWarningDate,

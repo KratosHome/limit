@@ -150,6 +150,17 @@ function packagedElectronPath(context) {
   return path.join(context.appOutDir, linuxExecutableName);
 }
 
+function macOSNotificationPermissionHelperPath(context) {
+  return path.join(
+    context.appOutDir,
+    ...resourceRelativePath(
+      context,
+      'native',
+      'LimitNotificationPermission.node',
+    ),
+  );
+}
+
 async function applyElectronFuses(context) {
   const electronPath = packagedElectronPath(context);
   if (
@@ -199,12 +210,7 @@ module.exports = async function afterPack(context) {
     context.appOutDir,
     `${context.packager.appInfo.productFilename}.app`,
   );
-  const outputPath = path.join(
-    appPath,
-    'Contents',
-    'MacOS',
-    'LimitNotificationPermission.node',
-  );
+  const outputPath = macOSNotificationPermissionHelperPath(context);
   if (
     !fs.existsSync(appPath) ||
     !fs.lstatSync(appPath).isDirectory() ||
@@ -225,6 +231,17 @@ module.exports = async function afterPack(context) {
   if (!fs.existsSync(sourcePath) || !fs.lstatSync(sourcePath).isFile()) {
     throw new Error('Не знайдено macOS notification permission helper source');
   }
+  // osx-sign signs deeper paths first. Keep this bridge below Resources/native
+  // so it is signed before the app executable, including unsigned universal builds.
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  if (
+    !fs
+      .realpathSync(path.dirname(outputPath))
+      .startsWith(`${realAppPath}${path.sep}`)
+  )
+    throw new Error(
+      'Неприпустимий шлях до macOS notification permission helper',
+    );
 
   const architectures =
     context.arch === Arch.arm64
@@ -296,4 +313,6 @@ module.exports = async function afterPack(context) {
 
 module.exports.electronFuseConfig = electronFuseConfig;
 module.exports.packagedElectronPath = packagedElectronPath;
+module.exports.macOSNotificationPermissionHelperPath =
+  macOSNotificationPermissionHelperPath;
 module.exports.validateWindowsBinding = validateWindowsBinding;

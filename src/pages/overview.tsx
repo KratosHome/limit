@@ -290,10 +290,10 @@ export function Overview({
         {enabledLimits.length ? (
           <div className="grid grid-cols-3 gap-3">
             {enabledLimits.slice(0, 3).map((limit) => {
-              const used = data.todayUsage[limit.id] || 0;
+              const used = data.limitUsage[limit.id] || 0;
               const percentage = Math.min(
                 100,
-                (used / (limit.dailyLimitMinutes * 60)) * 100,
+                (used / (limit.limitMinutes * 60)) * 100,
               );
               const exceeded = percentage >= 100;
               const close = percentage >= 80 && !exceeded;
@@ -329,7 +329,11 @@ export function Overview({
                   </div>
                   <div className="mt-3 flex items-center justify-between text-[10px] font-semibold text-[var(--muted)]">
                     <span>{formatDuration(used)}</span>
-                    <span>{formatMinutes(limit.dailyLimitMinutes)}</span>
+                    <span>
+                      {t(`limits.periodTotal.${limit.period}`, {
+                        limit: formatMinutes(limit.limitMinutes),
+                      })}
+                    </span>
                   </div>
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--progress-track)]">
                     <div

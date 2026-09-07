@@ -16,6 +16,59 @@ function createStore(t) {
   return store;
 }
 
+function rebuildLegacyLimitsTable(database, { siteTargets = true } = {}) {
+  database.exec('ALTER TABLE limits RENAME TO limits_current');
+  if (siteTargets) {
+    database.exec(`
+      CREATE TABLE limits (
+        app_id TEXT PRIMARY KEY,
+        app_name TEXT NOT NULL,
+        daily_limit_minutes INTEGER NOT NULL CHECK (daily_limit_minutes BETWEEN 1 AND 1440),
+        warning_minutes INTEGER NOT NULL CHECK (warning_minutes >= 0),
+        enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+        last_warning_date TEXT,
+        last_reached_date TEXT,
+        paused_date TEXT,
+        source_app_id TEXT,
+        site_domain TEXT
+      ) STRICT;
+      INSERT INTO limits (
+        app_id, app_name, daily_limit_minutes, warning_minutes, enabled,
+        last_warning_date, last_reached_date, paused_date,
+        source_app_id, site_domain
+      )
+      SELECT
+        app_id, app_name, limit_minutes, warning_minutes, enabled,
+        last_warning_date, last_reached_date, paused_date,
+        source_app_id, site_domain
+      FROM limits_current;
+      DROP TABLE limits_current;
+    `);
+    return;
+  }
+  database.exec(`
+    CREATE TABLE limits (
+      app_id TEXT PRIMARY KEY,
+      app_name TEXT NOT NULL,
+      daily_limit_minutes INTEGER NOT NULL CHECK (daily_limit_minutes BETWEEN 1 AND 1440),
+      warning_minutes INTEGER NOT NULL CHECK (warning_minutes >= 0),
+      enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+      last_warning_date TEXT,
+      last_reached_date TEXT,
+      paused_date TEXT
+    ) STRICT;
+    INSERT INTO limits (
+      app_id, app_name, daily_limit_minutes, warning_minutes, enabled,
+      last_warning_date, last_reached_date, paused_date
+    )
+    SELECT
+      app_id, app_name, limit_minutes, warning_minutes, enabled,
+      last_warning_date, last_reached_date, paused_date
+    FROM limits_current;
+    DROP TABLE limits_current;
+  `);
+}
+
 test('getAppIconSource keeps an older usable path while using the latest name', (t) => {
   const store = createStore(t);
   store.data.usageByDay = {
@@ -182,7 +235,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   firstStore.saveLimit({
     appId: 'com.example.Browser',
     appName: 'Example Browser',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   });
@@ -190,7 +243,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
     appId: 'com.example.Browser',
     appName: 'Example Browser',
     siteDomain: 'example.com',
-    dailyLimitMinutes: 15,
+    limitMinutes: 15,
     warningMinutes: 5,
     enabled: true,
   });
@@ -210,17 +263,14 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
     reopenedStore.aggregate('2026-08-05', '2026-08-05').apps[0].sites,
     [{ domain: 'example.com', seconds: 125 }],
   );
-  assert.equal(
-    reopenedStore.getLimit('com.example.Browser').dailyLimitMinutes,
-    30,
-  );
+  assert.equal(reopenedStore.getLimit('com.example.Browser').limitMinutes, 30);
   assert.deepEqual(reopenedStore.getLimit(siteLimit.id), {
     ...siteLimit,
   });
   assert.equal(reopenedStore.getTodayLimitUsage(siteLimit, date), 125);
   assert.equal(
     reopenedStore.database.prepare('PRAGMA user_version').get().user_version,
-    7,
+    8,
   );
   assert.deepEqual(
     reopenedStore.database
@@ -235,6 +285,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
       { version: 5, name: 'retry_native_notifications' },
       { version: 6, name: 'notification_preference' },
       { version: 7, name: 'canonical_site_limit_ids' },
+      { version: 8, name: 'limit_periods' },
     ],
   );
   assert.equal(
@@ -262,6 +313,182 @@ test('new databases use the supplied system language', (t) => {
   assert.equal(store.getSettings().notificationsEnabled, true);
 });
 
+test('current limit usage follows local day, week, and month boundaries', (t) => {
+  const store = createStore(t);
+  store.updateSettings({ websiteTrackingEnabled: true });
+  const sample = {
+    id: 'com.example.Browser',
+    name: 'Example Browser',
+    site: { domain: 'example.com' },
+  };
+  store.recordSample(sample, 120, true, new Date(2026, 7, 3, 10));
+  store.recordSample(sample, 180, false, new Date(2026, 7, 9, 10));
+  store.recordSample(sample, 240, false, new Date(2026, 7, 10, 10));
+  const weekly = store.saveLimit({
+    appId: sample.id,
+    appName: sample.name,
+    period: 'week',
+    limitMinutes: 60,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  const monthlySite = store.saveLimit({
+    appId: sample.id,
+    appName: sample.name,
+    siteDomain: 'example.com',
+    period: 'month',
+    limitMinutes: 60,
+    warningMinutes: 5,
+    enabled: true,
+  });
+
+  const sunday = new Date(2026, 7, 9, 20);
+  assert.equal(store.getCurrentLimitUsage(weekly, sunday), 300);
+  assert.equal(store.getCurrentLimitUsage(monthlySite, sunday), 300);
+  const sundayDashboard = store.getDashboard(
+    '2026-08-09',
+    '2026-08-09',
+    sunday,
+  );
+  assert.equal(sundayDashboard.todayUsage[sample.id], 180);
+  assert.equal(sundayDashboard.limitUsage[weekly.id], 300);
+  assert.equal(sundayDashboard.limitUsage[monthlySite.id], 300);
+
+  const monday = new Date(2026, 7, 10, 20);
+  assert.equal(store.getCurrentLimitUsage(weekly, monday), 240);
+  assert.equal(store.getCurrentLimitUsage(monthlySite, monday), 540);
+});
+
+test('period markers reset with the local period while pause remains daily', (t) => {
+  const store = createStore(t);
+  const limit = store.saveLimit({
+    appId: 'com.example.Editor',
+    appName: 'Editor',
+    period: 'week',
+    limitMinutes: 60,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  store.markLimitNotification(limit.id, 'warning', new Date(2026, 7, 9));
+  assert.equal(store.getLimit(limit.id).lastWarningDate, '2026-08-03');
+  assert.equal(
+    store.pauseLimitToday(limit.id, new Date(2026, 7, 9)).pausedDate,
+    '2026-08-09',
+  );
+  store.markLimitNotification(limit.id, 'reached', new Date(2026, 7, 10));
+  assert.equal(store.getLimit(limit.id).lastReachedDate, '2026-08-10');
+});
+
+test('legacy input defaults to day and preserves the previous period on edit', (t) => {
+  const store = createStore(t);
+  const input = {
+    appId: 'com.example.Editor',
+    appName: 'Editor',
+    dailyLimitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  };
+  const daily = store.saveLimit(input);
+  assert.equal(daily.period, 'day');
+  assert.equal(daily.limitMinutes, 30);
+
+  store.saveLimit({ ...input, period: 'week', limitMinutes: 90 });
+  const edited = store.saveLimit({ ...input, dailyLimitMinutes: 120 });
+  assert.equal(edited.period, 'week');
+  assert.equal(edited.limitMinutes, 120);
+});
+
+test('limit periods enforce application and database bounds', (t) => {
+  const store = createStore(t);
+  const input = {
+    appId: 'com.example.Editor',
+    appName: 'Editor',
+    warningMinutes: 5,
+    enabled: true,
+  };
+  for (const [period, limitMinutes] of [
+    ['day', 1441],
+    ['week', 10081],
+    ['month', 44641],
+    ['year', 60],
+  ]) {
+    assert.throws(
+      () => store.saveLimit({ ...input, period, limitMinutes }),
+      (error) => error?.code === 'invalidLimit',
+    );
+  }
+  store.saveLimit({ ...input, period: 'month', limitMinutes: 44640 });
+  assert.throws(() =>
+    store.database.exec(
+      "UPDATE limits SET warning_minutes = limit_minutes WHERE app_id = 'com.example.Editor'",
+    ),
+  );
+});
+
+test('migration v8 preserves v7 limits as daily limits', (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
+  const databasePath = path.join(directory, 'usage-data.sqlite3');
+  const originalStore = new UsageStore(databasePath);
+  originalStore.saveLimit({
+    appId: 'com.example.Editor',
+    appName: 'Editor',
+    limitMinutes: 30,
+    warningMinutes: 5,
+    enabled: true,
+  });
+  originalStore.markLimitNotification(
+    'com.example.Editor',
+    'warning',
+    new Date(2026, 7, 9),
+  );
+  originalStore.close();
+
+  const legacyDatabase = new DatabaseSync(databasePath);
+  rebuildLegacyLimitsTable(legacyDatabase);
+  legacyDatabase
+    .prepare('UPDATE limits SET warning_minutes = ? WHERE app_id = ?')
+    .run(30, 'com.example.Editor');
+  legacyDatabase.exec(`
+    DELETE FROM schema_migrations WHERE version >= 8;
+    PRAGMA user_version = 7;
+  `);
+  legacyDatabase.close();
+
+  const migratedStore = new UsageStore(databasePath);
+  t.after(() => {
+    migratedStore.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+  assert.deepEqual(migratedStore.getLimit('com.example.Editor'), {
+    id: 'com.example.Editor',
+    appId: 'com.example.Editor',
+    appName: 'Editor',
+    siteDomain: null,
+    period: 'day',
+    limitMinutes: 30,
+    warningMinutes: 29,
+    enabled: true,
+    lastWarningDate: '2026-08-09',
+    lastReachedDate: null,
+    pausedDate: null,
+  });
+  assert.equal(
+    migratedStore.database.prepare('PRAGMA user_version').get().user_version,
+    8,
+  );
+  assert.equal(
+    migratedStore.database.prepare('PRAGMA integrity_check').get()
+      .integrity_check,
+    'ok',
+  );
+  assert.equal(
+    fs
+      .readdirSync(directory)
+      .some((fileName) => fileName.includes('.backup-v7-')),
+    true,
+  );
+});
+
 test('migration adds site targets while preserving existing app limits', (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'limit-store-test-'));
   const databasePath = path.join(directory, 'usage-data.sqlite3');
@@ -269,16 +496,15 @@ test('migration adds site targets while preserving existing app limits', (t) => 
   originalStore.saveLimit({
     appId: 'com.example.Browser',
     appName: 'Example Browser',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   });
   originalStore.close();
 
   const legacyDatabase = new DatabaseSync(databasePath);
+  rebuildLegacyLimitsTable(legacyDatabase, { siteTargets: false });
   legacyDatabase.exec(`
-    ALTER TABLE limits DROP COLUMN site_domain;
-    ALTER TABLE limits DROP COLUMN source_app_id;
     ALTER TABLE settings DROP COLUMN notifications_enabled;
     DELETE FROM schema_migrations WHERE version >= 4;
     PRAGMA user_version = 3;
@@ -296,7 +522,8 @@ test('migration adds site targets while preserving existing app limits', (t) => 
     appId: 'com.example.Browser',
     appName: 'Example Browser',
     siteDomain: null,
-    dailyLimitMinutes: 30,
+    period: 'day',
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
     lastWarningDate: null,
@@ -305,7 +532,7 @@ test('migration adds site targets while preserving existing app limits', (t) => 
   });
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    7,
+    8,
   );
 });
 
@@ -316,7 +543,7 @@ test('migration retries notifications marked by the previous delivery path', (t)
   originalStore.saveLimit({
     appId: 'com.example.Editor',
     appName: 'Example Editor',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   });
@@ -333,6 +560,7 @@ test('migration retries notifications marked by the previous delivery path', (t)
   originalStore.close();
 
   const legacyDatabase = new DatabaseSync(databasePath);
+  rebuildLegacyLimitsTable(legacyDatabase);
   legacyDatabase.exec(`
     ALTER TABLE settings DROP COLUMN notifications_enabled;
     DELETE FROM schema_migrations WHERE version >= 5;
@@ -356,7 +584,7 @@ test('migration retries notifications marked by the previous delivery path', (t)
   );
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    7,
+    8,
   );
 });
 
@@ -367,6 +595,7 @@ test('migration enables the notification preference for existing users', (t) => 
   originalStore.close();
 
   const legacyDatabase = new DatabaseSync(databasePath);
+  rebuildLegacyLimitsTable(legacyDatabase);
   legacyDatabase.exec(`
     ALTER TABLE settings DROP COLUMN notifications_enabled;
     DELETE FROM schema_migrations WHERE version >= 6;
@@ -383,7 +612,7 @@ test('migration enables the notification preference for existing users', (t) => 
   assert.equal(migratedStore.getSettings().notificationsEnabled, true);
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    7,
+    8,
   );
 });
 
@@ -395,7 +624,7 @@ test('migration replaces legacy site-limit ids with bounded canonical ids', (t) 
     appId: 'com.example.Browser',
     appName: 'Example Browser',
     siteDomain: 'example.com',
-    dailyLimitMinutes: 20,
+    limitMinutes: 20,
     warningMinutes: 5,
     enabled: true,
   });
@@ -403,6 +632,7 @@ test('migration replaces legacy site-limit ids with bounded canonical ids', (t) 
 
   const legacyId = 'site:["com.example.Browser","example.com"]';
   const legacyDatabase = new DatabaseSync(databasePath);
+  rebuildLegacyLimitsTable(legacyDatabase);
   legacyDatabase
     .prepare('UPDATE limits SET app_id = ? WHERE app_id = ?')
     .run(legacyId, siteLimit.id);
@@ -431,7 +661,7 @@ test('site-limit ids stay bounded and cannot collide with app ids', (t) => {
     appId: longAppId,
     appName: 'Long Browser',
     siteDomain: 'example.com',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   });
@@ -446,7 +676,7 @@ test('site-limit ids stay bounded and cannot collide with app ids', (t) => {
       store.saveLimit({
         appId: siteLimit.id,
         appName: 'Reserved id',
-        dailyLimitMinutes: 30,
+        limitMinutes: 30,
         warningMinutes: 5,
         enabled: true,
       }),
@@ -458,7 +688,7 @@ test('limit input requires safe string application metadata', (t) => {
   const store = createStore(t);
   const input = {
     appName: 'Example',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   };
@@ -478,7 +708,7 @@ test('changing warning time resets only the warning delivery marker', (t) => {
   const input = {
     appId: 'com.example.Editor',
     appName: 'Example Editor',
-    dailyLimitMinutes: 30,
+    limitMinutes: 30,
     warningMinutes: 5,
     enabled: true,
   };
@@ -516,7 +746,15 @@ test('imports the legacy JSON once and keeps it as a backup', (t) => {
           },
         },
       },
-      limits: {},
+      limits: {
+        'com.example.Editor': {
+          appId: 'com.example.Editor',
+          appName: 'Example Editor',
+          dailyLimitMinutes: 25,
+          warningMinutes: 5,
+          enabled: true,
+        },
+      },
       settings: {
         trackingEnabled: false,
         websiteTrackingEnabled: false,
@@ -534,6 +772,8 @@ test('imports the legacy JSON once and keeps it as a backup', (t) => {
 
   assert.equal(store.getSettings().trackingEnabled, false);
   assert.equal(store.getSettings().notificationsEnabled, true);
+  assert.equal(store.getLimit('com.example.Editor').period, 'day');
+  assert.equal(store.getLimit('com.example.Editor').limitMinutes, 25);
   assert.equal(
     store.getTodayUsage('com.example.Editor', new Date(2026, 7, 4)),
     600,
@@ -575,7 +815,7 @@ test('parameterized writes treat SQL injection payloads as plain data', (t) => {
   store.saveLimit({
     appId: payload,
     appName: payload,
-    dailyLimitMinutes: 45,
+    limitMinutes: 45,
     warningMinutes: 5,
     enabled: true,
   });

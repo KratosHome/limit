@@ -1,4 +1,4 @@
-import type { AppLimit } from './limits';
+import type { AppLimit, LimitPeriod } from './limits';
 import type { NotificationPermission, Settings } from './settings';
 import type { TrackerStatus } from './tracker';
 
@@ -16,6 +16,7 @@ export interface AppUsage {
   lastTitle: string;
   lastSeenAt: string | null;
   limitMinutes: number | null;
+  limitPeriod: LimitPeriod | null;
   limitEnabled: boolean;
   isBrowser: boolean;
   sites: SiteUsage[];
@@ -56,6 +57,6 @@ export interface DashboardData {
   isPackaged: boolean;
   notificationPermission: NotificationPermission;
   today: string;
-  todayUsage: Record<string, number>;
+  limitUsage: Record<string, number>;
   updatedAt: string;
 }

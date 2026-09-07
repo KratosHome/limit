@@ -13,6 +13,8 @@ module.exports = {
   afterPack: 'scripts/electron-builder-after-pack.cjs',
   asar: { smartUnpack: false },
   directories: { output: 'release' },
+  artifactName: 'Limit-Local-${version}-${os}-${arch}.${ext}',
+  extraMetadata: { limitAutoUpdate: false },
   electronLanguages: ['en-US', 'uk'],
   files: commonFiles,
   mac: {

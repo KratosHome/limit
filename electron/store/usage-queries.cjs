@@ -1,5 +1,9 @@
 const path = require('node:path');
-const { enumerateDays } = require('./date-utils.cjs');
+const {
+  enumerateDays,
+  limitPeriodRange,
+  localDay,
+} = require('./date-utils.cjs');
 const {
   getOwn,
   guessCategory,
@@ -96,6 +100,24 @@ function getAppIconSource(data, appId) {
         ?.appName || null;
   }
   return name ? { appId, appName: name, executablePath, tracked } : null;
+}
+
+function getCurrentLimitUsage(data, limit, date = new Date()) {
+  if (!limit || typeof limit.appId !== 'string' || !limit.appId) return 0;
+  const { from } = limitPeriodRange(limit.period, date);
+  const to = localDay(date);
+  const hasSiteTarget = Boolean(limit.siteDomain);
+  const siteDomain = normalizeSiteDomain(limit.siteDomain);
+  if (hasSiteTarget && !siteDomain) return 0;
+  let seconds = 0;
+  for (const dayKey of enumerateDays(from, to)) {
+    const entry = getOwn(data.usageByDay[dayKey], limit.appId);
+    const rawSeconds = siteDomain
+      ? getOwn(entry?.sites, siteDomain)?.seconds
+      : entry?.seconds;
+    if (Number.isFinite(rawSeconds)) seconds += Math.max(0, rawSeconds);
+  }
+  return seconds;
 }
 
 function aggregateUsage(data, from, to) {
@@ -204,7 +226,8 @@ function mapAppAggregate(limits, entry) {
   return {
     ...app,
     sites,
-    limitMinutes: limit?.dailyLimitMinutes ?? null,
+    limitMinutes: limit?.limitMinutes ?? null,
+    limitPeriod: limit?.period ?? null,
     limitEnabled: limit?.enabled ?? false,
   };
 }
@@ -213,5 +236,6 @@ module.exports = {
   aggregateUsage,
   compareText,
   getAppIconSource,
+  getCurrentLimitUsage,
   getKnownApps,
 };

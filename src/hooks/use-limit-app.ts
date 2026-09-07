@@ -3,7 +3,12 @@ import { limitApi } from '../api';
 import { offsetDay, rangeForPeriod, toDayKey } from '../lib/format';
 import i18n, { normalizeLanguage, type AppLanguage } from '../i18n';
 import { translateError } from '../i18n/helpers';
-import type { AppLimit, LimitInput, LimitNotification } from '../types/limits';
+import {
+  normalizeLimitPeriod,
+  type AppLimit,
+  type LimitInput,
+  type LimitNotification,
+} from '../types/limits';
 import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
 import type { Settings as SettingsType } from '../types/settings';
 import type { AppUsage, DashboardData } from '../types/usage';
@@ -62,6 +67,13 @@ export function useLimitApp() {
           authorizationStatus: 'unknown',
           canPresent: false,
         },
+        apps: next.apps.map((app) => ({
+          ...app,
+          limitPeriod:
+            app.limitMinutes == null
+              ? null
+              : normalizeLimitPeriod(app.limitPeriod),
+        })),
         knownApps: next.knownApps.map((app) => ({
           ...app,
           sites: Array.isArray(app.sites) ? app.sites : [],
@@ -70,7 +82,9 @@ export function useLimitApp() {
           ...limit,
           id: limit.id || limit.appId,
           siteDomain: limit.siteDomain || null,
+          period: normalizeLimitPeriod(limit.period),
         })),
+        limitUsage: next.limitUsage ?? {},
       });
       setError('');
     } catch (reason) {

@@ -4,7 +4,7 @@ export default {
   subtitle: 'Set healthy boundaries and receive notifications on time.',
   newLimit: 'New limit',
   summary: {
-    active: 'Active today',
+    active: 'Active now',
     paused: 'Paused',
     reached: 'Limit reached',
   },
@@ -16,12 +16,16 @@ export default {
   },
   editLabel: 'Edit {{app}} limit',
   usedOf: 'of {{limit}}',
-  daily: 'Daily',
+  period: {
+    day: 'Daily',
+    week: 'Weekly',
+    month: 'Monthly',
+  },
   warning: '{{count}} min before',
   pauseToday: 'Pause for today',
   change: 'Change',
   emptyTitle: 'Create your first limit',
   emptyDescription:
-    'Choose an app and set daily time—Limit will notify you before and after you reach it.',
+    'Choose an app and a time period—Limit will notify you as you approach the total.',
   addLimit: 'Add limit',
 } as const;

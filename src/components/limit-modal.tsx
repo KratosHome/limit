@@ -15,7 +15,13 @@ import {
 } from './ui/select';
 import { formatMinutes } from '../lib/format';
 import { translateError } from '../i18n/helpers';
-import type { AppLimit, LimitInput } from '../types/limits';
+import {
+  limitPeriods,
+  normalizeLimitPeriod,
+  type AppLimit,
+  type LimitInput,
+  type LimitPeriod,
+} from '../types/limits';
 import type { KnownApp } from '../types/usage';
 
 interface LimitModalProps {
@@ -27,7 +33,41 @@ interface LimitModalProps {
   onDelete: (limitId: string) => Promise<void>;
 }
 
-const presets = [30, 60, 120, 180];
+interface LimitPeriodConfig {
+  defaultMinutes: number;
+  maxMinutes: number;
+  presets: number[];
+  rangeMax: number;
+  rangeMin: number;
+  rangeStep: number;
+}
+
+const limitPeriodConfig: Record<LimitPeriod, LimitPeriodConfig> = {
+  day: {
+    defaultMinutes: 60,
+    maxMinutes: 1440,
+    presets: [30, 60, 120, 180],
+    rangeMin: 5,
+    rangeMax: 480,
+    rangeStep: 5,
+  },
+  week: {
+    defaultMinutes: 420,
+    maxMinutes: 10_080,
+    presets: [210, 420, 840, 1260],
+    rangeMin: 30,
+    rangeMax: 3360,
+    rangeStep: 30,
+  },
+  month: {
+    defaultMinutes: 1800,
+    maxMinutes: 44_640,
+    presets: [900, 1800, 3600, 5400],
+    rangeMin: 60,
+    rangeMax: 14_880,
+    rangeStep: 60,
+  },
+};
 
 export function LimitModal({
   apps,
@@ -38,10 +78,27 @@ export function LimitModal({
   onDelete,
 }: LimitModalProps) {
   const { t } = useTranslation(['modals', 'common', 'errors']);
+  const initialPeriod = normalizeLimitPeriod(existing?.period);
   const defaultAppId = existing?.appId || initialAppId || apps[0]?.id || '';
   const [appId, setAppId] = useState(defaultAppId);
   const [siteDomain, setSiteDomain] = useState(existing?.siteDomain || '');
-  const [minutes, setMinutes] = useState(existing?.dailyLimitMinutes || 60);
+  const [period, setPeriod] = useState<LimitPeriod>(initialPeriod);
+  const [minutesByPeriod, setMinutesByPeriod] = useState<
+    Record<LimitPeriod, number>
+  >(() => ({
+    day:
+      initialPeriod === 'day'
+        ? (existing?.limitMinutes ?? limitPeriodConfig.day.defaultMinutes)
+        : limitPeriodConfig.day.defaultMinutes,
+    week:
+      initialPeriod === 'week'
+        ? (existing?.limitMinutes ?? limitPeriodConfig.week.defaultMinutes)
+        : limitPeriodConfig.week.defaultMinutes,
+    month:
+      initialPeriod === 'month'
+        ? (existing?.limitMinutes ?? limitPeriodConfig.month.defaultMinutes)
+        : limitPeriodConfig.month.defaultMinutes,
+  }));
   const [warningMinutes, setWarningMinutes] = useState(
     existing?.warningMinutes ?? 10,
   );
@@ -61,6 +118,10 @@ export function LimitModal({
   const canSelectSite = Boolean(
     selectedApp && (selectedApp.category === 'browser' || selectedSites.length),
   );
+  const minutes = minutesByPeriod[period];
+  const currentPeriodConfig = limitPeriodConfig[period];
+  const setMinutes = (value: number) =>
+    setMinutesByPeriod((current) => ({ ...current, [period]: value }));
   const safeMinutes = Number.isFinite(minutes) ? Math.round(minutes) : 0;
   const effectiveWarningMinutes = Math.min(
     Math.max(0, warningMinutes),
@@ -83,6 +144,9 @@ export function LimitModal({
       const firstControl =
         dialogRef.current?.querySelector<HTMLElement>(
           '#limit-app:not(:disabled)',
+        ) ||
+        dialogRef.current?.querySelector<HTMLElement>(
+          'input[name="limit-period"]:checked:not(:disabled)',
         ) ||
         dialogRef.current?.querySelector<HTMLElement>('#limit-duration') ||
         dialogRef.current?.querySelector<HTMLElement>('button:not(:disabled)');
@@ -126,8 +190,16 @@ export function LimitModal({
       setError(t('errors:selectApp'));
       return;
     }
-    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 1440) {
-      setError(t('errors:invalidDuration'));
+    if (
+      !Number.isFinite(minutes) ||
+      minutes < 1 ||
+      minutes > currentPeriodConfig.maxMinutes
+    ) {
+      setError(
+        t('errors:invalidDuration', {
+          max: formatMinutes(currentPeriodConfig.maxMinutes),
+        }),
+      );
       return;
     }
     setSaving(true);
@@ -137,7 +209,8 @@ export function LimitModal({
         appId: selectedApp.id,
         appName: selectedApp.name,
         siteDomain: siteDomain || null,
-        dailyLimitMinutes: minutes,
+        period,
+        limitMinutes: minutes,
         warningMinutes: effectiveWarningMinutes,
         enabled,
       });
@@ -307,12 +380,48 @@ export function LimitModal({
             </div>
           )}
 
+          <fieldset aria-describedby="limit-period-hint" disabled={saving}>
+            <legend className="field-label">
+              {t('modals:limit.periodLabel')}
+            </legend>
+            <div className="mt-2 grid grid-cols-3 gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-1 shadow-[var(--shadow-xs)]">
+              {limitPeriods.map((value) => (
+                <label
+                  key={value}
+                  className={`relative ${saving ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <input
+                    id={`limit-period-${value}`}
+                    className="peer sr-only"
+                    type="radio"
+                    name="limit-period"
+                    value={value}
+                    checked={period === value}
+                    onChange={() => {
+                      setPeriod(value);
+                      setError('');
+                    }}
+                  />
+                  <span className="flex h-9 items-center justify-center rounded-lg px-3 text-[11px] font-bold text-[var(--muted)] transition peer-checked:bg-[var(--text)] peer-checked:text-[var(--surface)] peer-checked:shadow-sm peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--accent)] peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[var(--surface-muted)]">
+                    {t(`modals:limit.period.${value}`)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p
+              id="limit-period-hint"
+              className="mt-1.5 text-[9px] leading-4 text-[var(--muted)]"
+            >
+              {t(`modals:limit.periodHint.${period}`)}
+            </p>
+          </fieldset>
+
           <div>
             <label htmlFor="limit-duration" className="field-label">
-              {t('modals:limit.dailyTime')}
+              {t(`modals:limit.timeLabel.${period}`)}
             </label>
             <div className="mt-2 grid grid-cols-4 gap-2">
-              {presets.map((preset) => (
+              {currentPeriodConfig.presets.map((preset) => (
                 <Button
                   key={preset}
                   variant="secondary"
@@ -331,10 +440,13 @@ export function LimitModal({
                 id="limit-duration"
                 aria-valuetext={formatMinutes(minutes)}
                 type="range"
-                min="5"
-                max="480"
-                step="5"
-                value={Math.min(minutes, 480)}
+                min={currentPeriodConfig.rangeMin}
+                max={currentPeriodConfig.rangeMax}
+                step={currentPeriodConfig.rangeStep}
+                value={Math.min(
+                  Math.max(safeMinutes, currentPeriodConfig.rangeMin),
+                  currentPeriodConfig.rangeMax,
+                )}
                 disabled={saving}
                 onChange={(event) => setMinutes(Number(event.target.value))}
                 className="limit-range min-w-0 flex-1"
@@ -342,10 +454,11 @@ export function LimitModal({
               <div className="flex items-center rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
                 <Input
                   variant="number"
+                  className="w-16"
                   aria-label={t('modals:limit.minutesLabel')}
                   type="number"
                   min="1"
-                  max="1440"
+                  max={currentPeriodConfig.maxMinutes}
                   value={minutes}
                   disabled={saving}
                   onChange={(event) => setMinutes(Number(event.target.value))}
@@ -393,7 +506,7 @@ export function LimitModal({
                   {t('modals:limit.enabled')}
                 </span>
                 <span className="mt-1 block text-[9px] font-medium text-[var(--muted)]">
-                  {t('modals:limit.notifyDaily')}
+                  {t(`modals:limit.reset.${period}`)}
                 </span>
               </span>
               <input

@@ -1,0 +1,10 @@
+# Keep the graph focused on project source, tests, and build scripts.
+node_modules/
+dist/
+release/
+graphify-out/
+.agents/
+.codex/
+.idea/
+package-lock.json
+skills-lock.json

@@ -11,6 +11,10 @@ test('desktop messages support Ukrainian and English', () => {
   assert.match(uk.reachedTitle('Editor'), /Ліміт Editor/);
   assert.match(en.reachedTitle('Editor'), /Editor reached/);
   assert.equal(en.warningMessage(5), '5 min remaining.');
+  assert.match(en.reachedMessage(30, 30, 'week'), /this week/);
+  assert.match(en.reachedMessage(30, 30, 'month'), /this month/);
+  assert.match(uk.reachedMessage(30, 30, 'week'), /Цього тижня/);
+  assert.match(uk.reachedMessage(30, 30, 'month'), /Цього місяця/);
   assert.equal(en.notificationRequestTitle, 'Limit notifications');
   assert.match(uk.notificationPermissionMessage, /Limit/);
   assert.equal(en.openNotificationSettings, 'Open Settings');

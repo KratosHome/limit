@@ -1,7 +1,7 @@
 export default {
   dashboardLoad: 'Could not load statistics',
   selectApp: 'Choose an app',
-  invalidDuration: 'Enter a time from 1 minute to 24 hours',
+  invalidDuration: 'Enter a total from 1 minute to {{max}} for this period',
   saveLimit: 'Could not save the limit',
   desktopApiUnavailable:
     'The desktop API is unavailable. Restart Limit or check the preload script.',
@@ -10,7 +10,7 @@ export default {
   invalidAppId: 'Invalid app identifier',
   invalidPermission: 'Invalid permission type',
   invalidAppData: 'Invalid app data',
-  invalidLimit: 'The limit must be between 1 minute and 24 hours',
+  invalidLimit: 'Choose a valid total for the selected limit period',
   storageRead:
     'Could not read the local database. A recovery backup was created.',
   storageImport:

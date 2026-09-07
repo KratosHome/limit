@@ -26,4 +26,21 @@ function enumerateDays(from, to) {
   return days;
 }
 
-module.exports = { addDays, enumerateDays, localDay };
+function limitPeriodRange(period, date = new Date()) {
+  const day = localDay(date);
+  if (period === 'week') {
+    const mondayOffset = (date.getDay() + 6) % 7;
+    const from = addDays(day, -mondayOffset);
+    return { from, to: addDays(from, 6), key: from };
+  }
+  if (period === 'month') {
+    const from = `${day.slice(0, 7)}-01`;
+    const nextMonth = parseDay(from);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const to = addDays(localDay(nextMonth), -1);
+    return { from, to, key: from };
+  }
+  return { from: day, to: day, key: day };
+}
+
+module.exports = { addDays, enumerateDays, limitPeriodRange, localDay };
