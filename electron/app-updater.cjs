@@ -5,6 +5,7 @@ function createAppUpdater({
   autoUpdater,
   enabled = false,
   manualInstall = false,
+  downloadInstaller,
   onStateChange = () => {},
   prepareToQuit = () => {},
   logger = console,
@@ -21,16 +22,25 @@ function createAppUpdater({
   let installing = false;
   let restoreAfterFailedInstall = null;
   let lastError = null;
+  let availableInfo = null;
+  let downloadPromise = null;
+  let downloadAbort = null;
 
   function getState() {
     return Object.freeze({ ...state });
   }
 
-  function setState(status, version) {
+  function setState(status, version, details = {}) {
     if (disposed) return;
-    const next = { status };
+    const next = { status, ...details };
     if (typeof version === 'string' && version) next.version = version;
-    if (state.status === next.status && state.version === next.version) return;
+    if (
+      state.status === next.status &&
+      state.version === next.version &&
+      state.percent === next.percent &&
+      state.filePath === next.filePath
+    )
+      return;
     state = next;
     try {
       onStateChange(getState());
@@ -63,9 +73,14 @@ function createAppUpdater({
 
   const listeners = {
     'checking-for-update': () => setState('checking'),
-    'update-available': (info) =>
-      setState(manualInstall ? 'available' : 'downloading', info?.version),
-    'update-not-available': () => setState('idle'),
+    'update-available': (info) => {
+      if (manualInstall) availableInfo = structuredClone(info);
+      setState(manualInstall ? 'available' : 'downloading', info?.version);
+    },
+    'update-not-available': () => {
+      availableInfo = null;
+      setState('idle');
+    },
     'download-progress': () => {
       if (!manualInstall) setState('downloading', state.version);
     },
@@ -83,7 +98,7 @@ function createAppUpdater({
     if (!active || !ready || disposed || installing)
       return Promise.resolve(false);
     if (checkPromise) return checkPromise;
-    if (state.status === 'downloaded' || state.status === 'downloading')
+    if (['downloaded', 'downloading', 'installer-ready'].includes(state.status))
       return Promise.resolve(false);
     lastError = null;
     const attempt = Promise.resolve()
@@ -106,6 +121,49 @@ function createAppUpdater({
       });
     checkPromise = attempt;
     setState('checking');
+    return attempt;
+  }
+
+  function downloadUpdate() {
+    if (!active || !manualInstall || !ready || disposed || !downloadInstaller)
+      return Promise.resolve(null);
+    if (downloadPromise) return downloadPromise;
+    if (state.status === 'installer-ready')
+      return Promise.resolve(state.filePath);
+    if (!availableInfo || !['available', 'error'].includes(state.status))
+      return Promise.resolve(null);
+    const info = availableInfo;
+    const abort = new AbortController();
+    downloadAbort = abort;
+    lastError = null;
+    const attempt = Promise.resolve()
+      .then(() => {
+        if (disposed) return null;
+        return downloadInstaller(info, {
+          signal: abort.signal,
+          onProgress: (percent) =>
+            setState('downloading', info.version, { percent }),
+        });
+      })
+      .then((filePath) => {
+        if (disposed) return null;
+        if (typeof filePath !== 'string' || !filePath)
+          throw new Error('The update download did not return an installer');
+        setState('installer-ready', info.version, { filePath });
+        return filePath;
+      })
+      .catch((error) => {
+        if (!disposed) handleError(error);
+        return null;
+      })
+      .finally(() => {
+        if (downloadPromise === attempt) {
+          downloadPromise = null;
+          downloadAbort = null;
+        }
+      });
+    downloadPromise = attempt;
+    setState('downloading', info.version, { percent: 0 });
     return attempt;
   }
 
@@ -159,19 +217,28 @@ function createAppUpdater({
   }
 
   function dispose() {
-    if (disposed) return;
+    if (disposed) return downloadPromise;
     disposed = true;
+    downloadAbort?.abort();
     if (interval !== null) timers.clearInterval(interval);
     interval = null;
-    if (!active || !started) return;
+    if (!active || !started) return downloadPromise;
     for (const [event, listener] of Object.entries(listeners)) {
       if (event !== 'error') autoUpdater.removeListener(event, listener);
     }
     // An in-flight check/download can still emit error during shutdown.
     removeFinishedErrorListener();
+    return downloadPromise;
   }
 
-  return { start, checkForUpdates, installUpdate, getState, dispose };
+  return {
+    start,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+    getState,
+    dispose,
+  };
 }
 
 module.exports = { createAppUpdater };

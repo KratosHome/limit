@@ -8,6 +8,7 @@ const {
   ipcMain,
   Menu,
   nativeImage,
+  net,
   Notification,
   powerMonitor,
   session,
@@ -20,6 +21,8 @@ const {
 } = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const { createAppUpdater } = require('./app-updater.cjs');
+const { createElectronUpdateFetch } = require('./electron-update-fetch.cjs');
+const { downloadMacUpdate } = require('./mac-update-download.cjs');
 const { limitAutoUpdate } = require('../package.json');
 const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
@@ -43,8 +46,9 @@ let store = null;
 let tracker = null;
 let accessibilityPermission = null;
 let appUpdater = null;
-let announcedUpdateVersion = null;
-const APP_RELEASE_URL = 'https://github.com/KratosHome/limit/releases/latest';
+let announcedUpdatePrompt = null;
+let manualUpdateDialog = null;
+let waitingForUpdateCleanup = false;
 let updateTimer = null;
 let screenLocked = false;
 let suspended = false;
@@ -120,40 +124,97 @@ function showMainWindow() {
   promptForManualUpdate();
 }
 
-async function openAppUpdateRelease() {
+async function downloadManualUpdate() {
+  if (isQuitting || appUpdater?.getState().status === 'downloading') return;
+  const filePath = await appUpdater?.downloadUpdate();
+  if (filePath || isQuitting) return;
+  const t = desktopMessages(store?.getSettings().language);
+  const { response } = await dialog
+    .showMessageBox({
+      type: 'error',
+      title: t.updateAvailableTitle,
+      message: t.updateDownloadFailed,
+      detail: t.updateDownloadFailedDetail,
+      buttons: [t.retryDownload, t.later],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .catch((error) => {
+      console.error('[updates] unable to show download error', error);
+      return { response: 1 };
+    });
+  if (response === 0 && !isQuitting) void downloadManualUpdate();
+}
+
+async function openDownloadedUpdate(filePath) {
   try {
-    await shell.openExternal(APP_RELEASE_URL);
+    const error = await shell.openPath(filePath);
+    if (error) throw new Error(error);
+    isQuitting = true;
+    app.quit();
   } catch (error) {
-    console.error('[updates] unable to open release page', error);
+    console.error('[updates] unable to open installer', error);
+    const t = desktopMessages(store?.getSettings().language);
+    await dialog
+      .showMessageBox({
+        type: 'error',
+        title: t.updateAvailableTitle,
+        message: t.updateOpenFailed,
+        detail: t.manualUpdateReadyDetail,
+        buttons: [t.showInFinder],
+      })
+      .catch((dialogError) =>
+        console.error('[updates] unable to show installer error', dialogError),
+      );
+    shell.showItemInFolder(filePath);
   }
 }
 
 function promptForManualUpdate() {
   const state = appUpdater?.getState();
+  const promptKey = `${state?.status}:${state?.version}`;
   if (
     isQuitting ||
+    manualUpdateDialog ||
     !mainWindow?.isVisible() ||
-    state?.status !== 'available' ||
+    !['available', 'installer-ready'].includes(state?.status) ||
     !state.version ||
-    announcedUpdateVersion === state.version
+    announcedUpdatePrompt === promptKey
   )
     return;
-  announcedUpdateVersion = state.version;
+  announcedUpdatePrompt = promptKey;
   const t = desktopMessages(store?.getSettings().language);
-  void dialog
+  const downloaded = state.status === 'installer-ready';
+  manualUpdateDialog = dialog
     .showMessageBox(mainWindow, {
       type: 'info',
       title: t.updateAvailableTitle,
-      message: t.updateAvailableMessage(state.version),
-      detail: t.manualUpdateDetail,
-      buttons: [t.downloadUpdate, t.later],
-      defaultId: 1,
-      cancelId: 1,
+      message: downloaded
+        ? t.updateReadyMessage(state.version)
+        : t.updateAvailableMessage(state.version),
+      detail: downloaded ? t.manualUpdateReadyDetail : t.manualUpdateDetail,
+      buttons: downloaded
+        ? [t.openInstallerAndQuit, t.showInFinder, t.later]
+        : [t.downloadUpdate, t.later],
+      defaultId: 0,
+      cancelId: downloaded ? 2 : 1,
     })
     .then(({ response }) => {
-      if (response === 0 && !isQuitting) void openAppUpdateRelease();
+      if (isQuitting) return;
+      if (response === 0) {
+        if (downloaded) void openDownloadedUpdate(state.filePath);
+        else void downloadManualUpdate();
+      } else if (downloaded && response === 1) {
+        shell.showItemInFolder(state.filePath);
+      }
     })
-    .catch((error) => console.error('[updates] unable to show update', error));
+    .catch((error) => console.error('[updates] unable to show update', error))
+    .finally(() => {
+      manualUpdateDialog = null;
+      // A very fast download can finish while the previous dialog is closing.
+      if (appUpdater?.getState().status === 'installer-ready')
+        promptForManualUpdate();
+    });
 }
 
 function createWindow() {
@@ -275,6 +336,9 @@ function refreshTrayMenu() {
   const trackingEnabled = settings.trackingEnabled;
   const t = desktopMessages(settings.language);
   const updateState = appUpdater?.getState();
+  const downloadLabel = Number.isFinite(updateState?.percent)
+    ? t.downloadingUpdateProgress(updateState.percent)
+    : t.downloadingUpdate;
   const updateMenu =
     updateState && updateState.status !== 'disabled'
       ? [
@@ -282,21 +346,26 @@ function refreshTrayMenu() {
             label:
               updateState.status === 'downloaded'
                 ? t.installUpdate(updateState.version)
-                : updateState.status === 'available'
-                  ? t.downloadUpdateVersion(updateState.version)
-                  : updateState.status === 'checking'
-                    ? t.checkingForUpdates
-                    : updateState.status === 'downloading'
-                      ? t.downloadingUpdate
-                      : updateState.status === 'error'
-                        ? t.retryUpdate
-                        : t.checkForUpdates,
+                : updateState.status === 'installer-ready'
+                  ? t.openInstallerVersion(updateState.version)
+                  : updateState.status === 'available'
+                    ? t.downloadUpdateVersion(updateState.version)
+                    : updateState.status === 'checking'
+                      ? t.checkingForUpdates
+                      : updateState.status === 'downloading'
+                        ? downloadLabel
+                        : updateState.status === 'error'
+                          ? t.retryUpdate
+                          : t.checkForUpdates,
             enabled: !['checking', 'downloading'].includes(updateState.status),
             click: () => {
               if (appUpdater.getState().status === 'downloaded') {
                 appUpdater.installUpdate();
+              } else if (appUpdater.getState().status === 'installer-ready') {
+                announcedUpdatePrompt = null;
+                showMainWindow();
               } else if (appUpdater.getState().status === 'available') {
-                void openAppUpdateRelease();
+                void downloadManualUpdate();
               } else {
                 void appUpdater.checkForUpdates();
               }
@@ -304,7 +373,9 @@ function refreshTrayMenu() {
           },
         ]
       : [];
-  tray.setToolTip(t.trayTooltip);
+  tray.setToolTip(
+    updateState?.status === 'downloading' ? downloadLabel : t.trayTooltip,
+  );
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: t.open, click: showMainWindow },
@@ -1455,11 +1526,25 @@ if (hasSingleInstanceLock)
       app,
       enabled: updatesEnabled,
       manualInstall: process.platform === 'darwin',
+      downloadInstaller: (info, options) =>
+        downloadMacUpdate(info, {
+          ...options,
+          directory: app.getPath('downloads'),
+          fetch: createElectronUpdateFetch(net),
+        }),
       autoUpdater: updatesEnabled
         ? require('electron-updater').autoUpdater
         : null,
       logger: updateLogger,
-      onStateChange: () => {
+      onStateChange: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.setProgressBar(
+            state.status === 'downloading'
+              ? Number.isFinite(state.percent)
+                ? state.percent / 100
+                : 2
+              : -1,
+          );
         refreshTrayMenu();
         promptForManualUpdate();
       },
@@ -1512,10 +1597,21 @@ if (hasSingleInstanceLock) {
   });
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
-  appUpdater?.dispose();
+  const downloadCleanup = appUpdater?.dispose();
   tracker?.stop();
+  if (downloadCleanup) {
+    event.preventDefault();
+    if (!waitingForUpdateCleanup) {
+      waitingForUpdateCleanup = true;
+      void downloadCleanup.finally(() => {
+        waitingForUpdateCleanup = false;
+        app.quit();
+      });
+    }
+    return;
+  }
   store?.close();
 });
 
