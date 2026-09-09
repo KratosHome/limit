@@ -393,8 +393,10 @@ class SQLiteStorage {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const result = callback();
-      this.database.exec('COMMIT');
+      // A permissions failure must still roll back the write so callers can
+      // keep their in-memory snapshot unchanged after a failed transaction.
       this.secureFilePermissions();
+      this.database.exec('COMMIT');
       if (!this.recoveryCreated && !this.writeBlocked)
         this.lastPersistenceError = null;
       return result;

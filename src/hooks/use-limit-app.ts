@@ -42,6 +42,9 @@ export function useLimitApp() {
   const [theme, setTheme] = useState<'light' | 'dark'>(initialTheme);
   const [modal, setModal] = useState<ModalState | null>(null);
   const [toast, setToast] = useState<LimitNotification | null>(null);
+  const [trackingPending, setTrackingPending] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
+  const trackingRequest = useRef(false);
   const dashboardRequestId = useRef(0);
   const range = useMemo(
     () => rangeForPeriod(period, customRange),
@@ -134,9 +137,32 @@ export function useLimitApp() {
   }, [data?.settings.language]);
 
   async function toggleTracking() {
-    if (!data) return;
-    await limitApi.setTrackingEnabled(!data.settings.trackingEnabled);
-    await loadDashboard();
+    if (!data || trackingRequest.current) return;
+    trackingRequest.current = true;
+    setTrackingPending(true);
+    setTrackingError('');
+    try {
+      const settings = await limitApi.setTrackingEnabled(
+        !data.settings.trackingEnabled,
+      );
+      setData((current) => (current ? { ...current, settings } : current));
+      await loadDashboard();
+    } catch {
+      setTrackingError(i18n.t('components:tracking.failed'));
+    } finally {
+      trackingRequest.current = false;
+      setTrackingPending(false);
+    }
+  }
+
+  async function openTrackingWidget() {
+    setTrackingError('');
+    try {
+      if (!(await limitApi.openTrackingWidget()))
+        setTrackingError(i18n.t('components:tracking.widgetFailed'));
+    } catch {
+      setTrackingError(i18n.t('components:tracking.widgetFailed'));
+    }
   }
 
   async function updateSettings(patch: Partial<SettingsType>) {
@@ -208,6 +234,9 @@ export function useLimitApp() {
     theme,
     toast,
     toggleTracking,
+    trackingPending,
+    trackingError,
+    openTrackingWidget,
     updateSettings,
     view,
   };

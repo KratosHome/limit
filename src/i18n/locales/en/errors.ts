@@ -8,6 +8,10 @@ export default {
   ipcSender: 'Unauthorized IPC sender',
   invalidTracking: 'Invalid tracking value',
   invalidAppId: 'Invalid app identifier',
+  invalidActivity: 'Enter a valid duration for the selected day.',
+  activityConflict:
+    'This activity changed while you were editing it. Reload the record and try again.',
+  activityNotFound: 'This activity no longer exists. Reload the list.',
   invalidPermission: 'Invalid permission type',
   invalidAppData: 'Invalid app data',
   invalidLimit: 'Choose a valid total for the selected limit period',

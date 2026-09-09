@@ -9,11 +9,7 @@ interface LimitToastProps {
 
 export function LimitToast({ toast, onOpenLimits }: LimitToastProps) {
   return (
-    <div
-      role="status"
-      aria-live="assertive"
-      className="fixed bottom-5 right-5 z-[60]"
-    >
+    <div role="status" aria-live="assertive">
       <Button
         variant="ghost"
         size="none"

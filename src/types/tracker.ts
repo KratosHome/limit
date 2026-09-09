@@ -1,4 +1,5 @@
 export interface TrackerStatus {
+  activityState: 'active' | 'paused' | 'locked' | 'unknown';
   currentApp: {
     id: string;
     name: string;

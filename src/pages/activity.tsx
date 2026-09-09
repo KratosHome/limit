@@ -3,12 +3,14 @@ import {
   ArrowUp,
   CalendarDays,
   ChevronDown,
+  Pencil,
   Search,
   SlidersHorizontal,
 } from 'lucide-react';
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AppIcon } from '../components/app-icon';
+import { ActivityEditor } from '../components/activity-editor';
 import { SiteUsagePanel } from '../components/site-usage-panel';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -22,9 +24,15 @@ interface ActivityProps {
   data: DashboardData;
   onSetLimit: (app: AppUsage) => void;
   onOpenSettings: () => void;
+  onActivityChanged: () => Promise<void>;
 }
 
-export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
+export function Activity({
+  data,
+  onSetLimit,
+  onOpenSettings,
+  onActivityChanged,
+}: ActivityProps) {
   const { i18n, t } = useTranslation('activity');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('__all__');
@@ -33,6 +41,10 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
   const [expandedApps, setExpandedApps] = useState<Set<string>>(
     () => new Set(),
   );
+  const [editing, setEditing] = useState<{
+    app: AppUsage;
+    range: { from: string; to: string };
+  } | null>(null);
   const categories = useMemo(
     () => [...new Set(data.apps.map((app) => app.category))],
     [data.apps],
@@ -288,8 +300,28 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
                       </span>
                     </span>
                     <div role="cell">
-                      <div className="text-[12px] font-bold tabular-nums text-[var(--text)]">
-                        {formatDuration(app.seconds)}
+                      <div className="flex items-center gap-1.5 text-[12px] font-bold tabular-nums text-[var(--text)]">
+                        <span>{formatDuration(app.seconds)}</span>
+                        <Button
+                          variant="icon"
+                          size="none"
+                          className="h-7 w-7 shrink-0"
+                          aria-label={t('editLabel', { app: app.name })}
+                          title={t('editLabel', { app: app.name })}
+                          disabled={!data.days.length}
+                          onClick={() => {
+                            const days = [...data.days].sort();
+                            setEditing({
+                              app,
+                              range: {
+                                from: days[0],
+                                to: days[days.length - 1],
+                              },
+                            });
+                          }}
+                        >
+                          <Pencil size={12} aria-hidden="true" />
+                        </Button>
                       </div>
                       <div className="mt-1.5 h-1 w-20 overflow-hidden rounded-full bg-[var(--progress-track)]">
                         <div
@@ -386,6 +418,14 @@ export function Activity({ data, onSetLimit, onOpenSettings }: ActivityProps) {
           </div>
         </div>
       </section>
+      {editing && (
+        <ActivityEditor
+          app={editing.app}
+          range={editing.range}
+          onClose={() => setEditing(null)}
+          onSaved={onActivityChanged}
+        />
+      )}
     </div>
   );
 }

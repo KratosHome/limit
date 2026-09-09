@@ -41,8 +41,7 @@ function isSupportedBrowserWindow(windowInfo) {
 class ActivityTracker extends EventEmitter {
   constructor({
     store,
-    getIdleSeconds = () => 0,
-    getSystemState = null,
+    getSystemState = () => 'active',
     hasAccessibilityPermission = null,
     ownProcessId,
     intervalMs = 5000,
@@ -50,10 +49,7 @@ class ActivityTracker extends EventEmitter {
   }) {
     super();
     this.store = store;
-    this.getIdleSeconds = getIdleSeconds;
-    this.getSystemState =
-      getSystemState ||
-      ((threshold) => (this.getIdleSeconds() >= threshold ? 'idle' : 'active'));
+    this.getSystemState = getSystemState;
     this.hasAccessibilityPermission =
       typeof hasAccessibilityPermission === 'function'
         ? hasAccessibilityPermission
@@ -66,6 +62,7 @@ class ActivityTracker extends EventEmitter {
     this.lastSample = null;
     this.lastSampleIsLaunch = false;
     this.currentApp = null;
+    this.activityState = 'unknown';
     this.permissionState = 'unknown';
     this.lastError = null;
     this.websitePermissionState = 'disabled';
@@ -90,19 +87,41 @@ class ActivityTracker extends EventEmitter {
   }
 
   stop() {
-    this.generation += 1;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.resetActivity();
+  }
+
+  clearActivity(activityState) {
     this.lastTickAt = 0;
     this.lastAppId = null;
     this.lastSample = null;
     this.lastSampleIsLaunch = false;
     this.currentApp = null;
+    this.activityState = activityState;
+  }
+
+  resetActivity() {
+    this.generation += 1;
+    this.clearActivity(
+      this.store.getSettings().trackingEnabled ? 'unknown' : 'paused',
+    );
+    this.emit('updated', this.getStatus());
+  }
+
+  getActivityState(settings) {
+    if (!settings.trackingEnabled) return 'paused';
+    const state = this.getSystemState();
+    // Reading or watching the foreground app still counts without input.
+    if (state === 'idle') return 'active';
+    return ['active', 'locked'].includes(state) ? state : 'unknown';
   }
 
   getStatus() {
+    const paused = !this.store.getSettings().trackingEnabled;
     return {
-      currentApp: this.currentApp,
+      currentApp: paused ? null : this.currentApp,
+      activityState: paused ? 'paused' : this.activityState,
       permissionState: this.permissionState,
       lastError: this.lastError,
       websitePermissionState: this.websitePermissionState,
@@ -124,19 +143,15 @@ class ActivityTracker extends EventEmitter {
 
     try {
       const settings = this.store.getSettings();
-      if (
-        !settings.trackingEnabled ||
-        this.getSystemState(settings.idleThresholdSeconds) !== 'active'
-      ) {
-        this.lastAppId = null;
-        this.lastSample = null;
-        this.lastSampleIsLaunch = false;
-        this.currentApp = null;
+      const activityState = this.getActivityState(settings);
+      if (activityState !== 'active') {
+        this.clearActivity(activityState);
         this.emit('updated', this.getStatus());
         return;
       }
 
       const activeWin = await this.loadProvider();
+      if (generation !== this.generation) return;
       const websiteTrackingEnabled = settings.websiteTrackingEnabled === true;
       if (websiteTrackingEnabled && this.websitePermissionState === 'disabled')
         this.websitePermissionState = 'pending';
@@ -148,6 +163,15 @@ class ActivityTracker extends EventEmitter {
         websiteTrackingEnabled: websiteTrackingEnabled && !accessibilityBlocked,
       });
       if (generation !== this.generation) return;
+      const currentActivityState = this.getActivityState(
+        this.store.getSettings(),
+      );
+      if (currentActivityState !== 'active') {
+        this.clearActivity(currentActivityState);
+        this.emit('updated', this.getStatus());
+        return;
+      }
+      this.activityState = 'active';
       if (websiteTrackingEnabled) {
         this.lastWebsiteError = accessibilityBlocked
           ? 'accessibility-permission'
@@ -173,10 +197,8 @@ class ActivityTracker extends EventEmitter {
         !windowInfo?.owner?.name ||
         windowInfo.owner.processId === this.ownProcessId
       ) {
-        this.lastAppId = null;
-        this.lastSample = null;
-        this.lastSampleIsLaunch = false;
-        this.currentApp = null;
+        this.clearActivity(windowInfo?.owner?.name ? 'active' : 'unknown');
+        this.emit('updated', this.getStatus());
         return;
       }
 
@@ -212,10 +234,8 @@ class ActivityTracker extends EventEmitter {
       this.lastError = null;
       this.emit('updated', this.getStatus());
     } catch (error) {
-      this.lastAppId = null;
-      this.lastSample = null;
-      this.lastSampleIsLaunch = false;
-      this.currentApp = null;
+      if (generation !== this.generation) return;
+      this.clearActivity('unknown');
       this.lastError = error instanceof Error ? error.message : String(error);
       this.permissionState = /wayland|unavailable|unsupported/i.test(
         this.lastError,

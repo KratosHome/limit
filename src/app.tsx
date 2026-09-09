@@ -1,5 +1,11 @@
 import { LimitApp } from './app/limit-app';
+import { TrackingWidget } from './app/tracking-widget';
 
 export default function App() {
-  return <LimitApp />;
+  return new URLSearchParams(window.location.search).get('widget') ===
+    'tracking' ? (
+    <TrackingWidget />
+  ) : (
+    <LimitApp />
+  );
 }

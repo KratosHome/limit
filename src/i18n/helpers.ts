@@ -44,6 +44,8 @@ export function translateError(
   message: string,
   fallbackKey = 'unknown',
 ): string {
+  if (i18n.exists(`errors:${message}`))
+    return String(i18n.t(`errors:${message}`));
   const key = errorKeys[message];
   return key
     ? String(i18n.t(`errors:${key}`))

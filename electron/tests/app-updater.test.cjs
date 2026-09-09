@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
-const { createAppUpdater } = require('../app-updater.cjs');
+const {
+  createAppUpdater,
+  publicAppUpdateState,
+} = require('../app-updater.cjs');
 
 function deferred() {
   let resolve;
@@ -79,8 +82,8 @@ test('checks on startup and every four hours without forcing a restart', async (
   await h.controller.start();
   await h.controller.checkForUpdates();
   assert.equal(h.checks, 1);
-  assert.equal(h.updater.autoDownload, true);
-  assert.equal(h.updater.autoInstallOnAppQuit, true);
+  assert.equal(h.updater.autoDownload, false);
+  assert.equal(h.updater.autoInstallOnAppQuit, false);
   assert.equal(h.intervals.size, 1);
   const timer = [...h.intervals.values()][0];
   assert.equal(timer.milliseconds, 4 * 60 * 60_000);
@@ -95,36 +98,113 @@ test('checks on startup and every four hours without forcing a restart', async (
   assert.equal(h.intervals.size, 0);
 });
 
-test('downloads in the background and keeps the downloaded update until quit', async () => {
+test('native updates wait for download and install clicks, with shared progress', async () => {
   const h = harness();
   const download = deferred();
-  let checks = 0;
+  let downloads = 0;
   h.updater.checkForUpdates = async () => {
-    checks += 1;
     h.updater.emit('update-available', { version: '0.2.0' });
-    return { downloadPromise: download.promise };
+    return { isUpdateAvailable: true };
+  };
+  h.updater.downloadUpdate = () => {
+    downloads += 1;
+    return download.promise;
   };
   await h.controller.start();
-  const first = h.controller.checkForUpdates();
-  assert.equal(h.controller.checkForUpdates(), first);
+  await h.controller.checkForUpdates();
+  assert.deepEqual(h.controller.getState(), {
+    status: 'available',
+    version: '0.2.0',
+  });
+  assert.equal(downloads, 0);
+  assert.equal(h.controller.installUpdate(), false);
+  assert.equal(h.updater.autoDownload, false);
+  assert.equal(h.updater.autoInstallOnAppQuit, false);
+
+  const first = h.controller.downloadUpdate();
+  assert.equal(h.controller.downloadUpdate(), first);
+  await Promise.resolve();
+  assert.equal(downloads, 1);
+  assert.equal(await h.controller.checkForUpdates(), false);
+  h.updater.emit('download-progress', { percent: 25 });
   assert.deepEqual(h.controller.getState(), {
     status: 'downloading',
     version: '0.2.0',
+    percent: 25,
   });
-  h.updater.emit('download-progress', { percent: 25 });
-  assert.equal(checks, 1);
   h.updater.emit('update-downloaded', { version: '0.2.0' });
   download.resolve(['/tmp/Limit-0.2.0.exe']);
-  await first;
+  assert.equal(await first, true);
   assert.equal(h.installs, 0);
   assert.equal(await h.controller.checkForUpdates(), false);
-  assert.equal(checks, 1);
   assert.deepEqual(h.controller.getState(), {
     status: 'downloaded',
     version: '0.2.0',
   });
   assert.equal(Object.isFrozen(h.controller.getState()), true);
   assert.notEqual(h.controller.getState(), h.controller.getState());
+  assert.equal(await h.controller.downloadUpdate(), true);
+  assert.equal(downloads, 1);
+  assert.equal(h.controller.installUpdate(), true);
+  assert.equal(h.installs, 1);
+  h.controller.dispose();
+});
+
+test('failed native downloads retry on click and do not trigger a new release check', async () => {
+  const h = harness();
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  const checksBeforeDownload = h.checks;
+  let downloads = 0;
+  h.updater.emit('update-available', { version: '0.2.0' });
+  h.updater.downloadUpdate = async () => {
+    downloads += 1;
+    if (downloads === 1) throw new Error('offline');
+    return ['/tmp/Limit-0.2.0.exe'];
+  };
+  assert.equal(await h.controller.downloadUpdate(), null);
+  assert.deepEqual(h.controller.getState(), {
+    status: 'error',
+    version: '0.2.0',
+    errorAction: 'download',
+  });
+  assert.equal(await h.controller.downloadUpdate(), true);
+  assert.equal(h.checks, checksBeforeDownload);
+  assert.equal(downloads, 2);
+  assert.equal(h.installs, 0);
+  h.controller.dispose();
+});
+
+test('public update snapshots flatten release information and hide installer paths', async () => {
+  const h = harness({
+    manualInstall: true,
+    downloadInstaller: async () => '/private/update.dmg',
+  });
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  h.updater.emit('update-available', {
+    ...manualUpdateInfo(),
+    releaseName: 'Polished updates',
+    releaseDate: '2026-09-09T10:00:00Z',
+    releaseNotes: [
+      { version: '0.2.0', note: 'First change' },
+      { version: '0.1.1', note: 'Second change' },
+      { note: 42 },
+    ],
+  });
+  await h.controller.downloadUpdate();
+  assert.deepEqual(publicAppUpdateState(h.controller.getState(), '0.1.0'), {
+    status: 'installer-ready',
+    currentVersion: '0.1.0',
+    version: '0.2.0',
+    releaseName: 'Polished updates',
+    releaseDate: '2026-09-09T10:00:00Z',
+    releaseNotes: 'First change\n\nSecond change',
+  });
+  assert.deepEqual(publicAppUpdateState(undefined, '0.1.0'), {
+    status: 'disabled',
+    currentVersion: '0.1.0',
+  });
   h.controller.dispose();
 });
 
@@ -307,6 +387,7 @@ test('failed manual transfers can retry the same installer without another relea
   assert.deepEqual(h.controller.getState(), {
     status: 'error',
     version: '0.2.0',
+    errorAction: 'download',
   });
   assert.equal(h.errors.length, 1);
   assert.equal(await h.controller.downloadUpdate(), filePath);
@@ -370,9 +451,8 @@ test('disposal immediately after clicking download prevents the transfer from st
   assert.equal(h.errors.length, 0);
 });
 
-test('manual transfer is unavailable in native-update, disabled and development modes', async () => {
+test('manual transfer is unavailable in disabled and development modes', async () => {
   for (const options of [
-    { manualInstall: false },
     { manualInstall: true, enabled: false },
     {
       manualInstall: true,
@@ -491,7 +571,10 @@ test('install failures restore tray behavior for thrown and emitted errors', asy
     assert.equal(h.controller.installUpdate(), false);
     assert.equal(canClose, false);
     assert.equal(h.controller.getState().status, 'error');
-    assert.equal(await h.controller.checkForUpdates(), true);
+    assert.equal(h.controller.getState().errorAction, 'install');
+    assert.equal(await h.controller.checkForUpdates(), false);
+    h.updater.quitAndInstall = () => {};
+    assert.equal(h.controller.installUpdate(), true);
     h.controller.dispose();
   }
 });
@@ -552,4 +635,112 @@ test('disposal safely handles an in-flight failure without notifying the UI', as
   assert.equal(h.states.length, statesBeforeDispose);
   assert.equal(h.updater.listenerCount('error'), 0);
   assert.equal(h.intervals.size, 0);
+});
+
+test('closing during a native download suppresses late state and observes its errors', async () => {
+  const h = harness();
+  const download = deferred();
+  h.updater.downloadUpdate = () => download.promise;
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  h.updater.emit('update-available', { version: '0.2.0' });
+  const attempt = h.controller.downloadUpdate();
+  await Promise.resolve();
+  const stateCount = h.states.length;
+  assert.equal(h.controller.dispose(), null);
+  const error = new Error('closed connection');
+  h.updater.emit('error', error);
+  h.updater.emit('download-progress', { percent: 75 });
+  download.reject(error);
+  assert.equal(await attempt, null);
+  assert.equal(h.states.length, stateCount);
+  assert.equal(h.updater.listenerCount('error'), 0);
+  assert.equal(h.installs, 0);
+});
+
+test('a delayed install error retains the downloaded payload for an install retry', async () => {
+  let canClose = false;
+  const h = harness({
+    prepareToQuit: () => {
+      canClose = true;
+      return () => {
+        canClose = false;
+      };
+    },
+  });
+  let downloads = 0;
+  h.updater.downloadUpdate = async () => {
+    downloads++;
+    return ['/tmp/update.exe'];
+  };
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  h.updater.emit('update-available', { version: '0.2.0' });
+  await h.controller.downloadUpdate();
+  assert.equal(h.controller.installUpdate(), true);
+  assert.equal(canClose, true);
+  await Promise.resolve();
+  h.updater.emit('error', new Error('installer could not start'));
+  assert.equal(canClose, false);
+  assert.deepEqual(publicAppUpdateState(h.controller.getState(), '0.1.0'), {
+    status: 'error',
+    errorAction: 'install',
+    version: '0.2.0',
+    currentVersion: '0.1.0',
+  });
+  assert.equal(await h.controller.checkForUpdates(), false);
+  assert.equal(await h.controller.downloadUpdate(), true);
+  assert.equal(downloads, 1);
+  assert.equal(h.controller.installUpdate(), true);
+  assert.equal(h.installs, 2);
+  assert.equal(canClose, true);
+  h.controller.dispose();
+});
+
+test('late release check events and failures never overwrite a clicked download', async () => {
+  for (const manualInstall of [true, false]) {
+    for (const fails of [false, true]) {
+      const check = deferred();
+      const transfer = deferred();
+      const h = harness({
+        manualInstall,
+        downloadInstaller: () => transfer.promise,
+      });
+      h.updater.checkForUpdates = () => {
+        h.updater.emit('update-available', manualUpdateInfo());
+        return check.promise;
+      };
+      h.updater.downloadUpdate = () => transfer.promise;
+      await h.controller.start();
+      const checking = h.controller.checkForUpdates();
+      const downloading = h.controller.downloadUpdate();
+      await Promise.resolve();
+      const stateCount = h.states.length;
+      h.updater.emit('checking-for-update');
+      h.updater.emit('update-not-available');
+      h.updater.emit('update-available', { version: '0.3.0' });
+      if (fails) {
+        const error = new Error('late release response failed');
+        h.updater.emit('error', error);
+        check.reject(error);
+      } else {
+        check.resolve({ isUpdateAvailable: true });
+      }
+      assert.equal(await checking, !fails);
+      assert.equal(h.states.length, stateCount);
+      assert.deepEqual(h.controller.getState(), {
+        status: 'downloading',
+        version: '0.2.0',
+        percent: 0,
+      });
+      transfer.resolve(manualInstall ? '/tmp/update.dmg' : ['/tmp/update.exe']);
+      await downloading;
+      assert.equal(h.controller.getState().version, '0.2.0');
+      assert.equal(
+        h.controller.getState().status,
+        manualInstall ? 'installer-ready' : 'downloaded',
+      );
+      h.controller.dispose();
+    }
+  }
 });

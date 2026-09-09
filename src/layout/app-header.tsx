@@ -1,4 +1,11 @@
-import { CalendarRange, Moon, Pause, Play, Sun } from 'lucide-react';
+import {
+  CalendarRange,
+  Moon,
+  Pause,
+  PictureInPicture2,
+  Play,
+  Sun,
+} from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PeriodPicker } from '../components/period-picker';
@@ -15,12 +22,14 @@ interface AppHeaderProps {
   period: PeriodKey;
   theme: 'light' | 'dark';
   trackingEnabled?: boolean;
+  trackingPending: boolean;
   view: ViewKey;
   onCustomRangeChange: Dispatch<SetStateAction<DateRange>>;
   onLanguageChange: (language: AppLanguage) => void;
   onPeriodChange: (period: PeriodKey) => void;
   onThemeToggle: () => void;
   onTrackingToggle: () => void;
+  onOpenTrackingWidget: () => void;
 }
 
 export function AppHeader({
@@ -29,12 +38,14 @@ export function AppHeader({
   period,
   theme,
   trackingEnabled,
+  trackingPending,
   view,
   onCustomRangeChange,
   onLanguageChange,
   onPeriodChange,
   onThemeToggle,
   onTrackingToggle,
+  onOpenTrackingWidget,
 }: AppHeaderProps) {
   const { t } = useTranslation('components');
   const hasPeriodPicker = view === 'overview' || view === 'activity';
@@ -83,6 +94,17 @@ export function AppHeader({
         <Button
           variant="topIcon"
           size="none"
+          className="h-9 w-9"
+          onClick={onOpenTrackingWidget}
+          aria-label={t('header.openWidget')}
+          title={t('header.openWidget')}
+          disabled={trackingEnabled === undefined}
+        >
+          <PictureInPicture2 size={16} aria-hidden="true" />
+        </Button>
+        <Button
+          variant="topIcon"
+          size="none"
           onClick={onThemeToggle}
           className="h-9 w-9"
           aria-label={t('header.toggleTheme')}
@@ -93,6 +115,7 @@ export function AppHeader({
           variant="topIcon"
           size="none"
           onClick={onTrackingToggle}
+          disabled={trackingPending || trackingEnabled === undefined}
           className={`h-9 w-9 ${trackingEnabled ? 'text-emerald-600' : 'text-amber-600'}`}
           aria-label={
             trackingEnabled

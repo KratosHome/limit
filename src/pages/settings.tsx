@@ -9,7 +9,6 @@ import {
   Power,
   ShieldCheck,
   Sun,
-  TimerReset,
 } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,9 +21,12 @@ import type {
 import { Button } from '../components/ui/button';
 import { LanguageSelect } from '../components/language-select';
 import type { AppLanguage } from '../i18n';
+import type { AppUpdates } from '../hooks/use-app-updates';
+import { AppUpdateSettings } from '../components/app-update-settings';
 
 interface SettingsProps {
   data: DashboardData;
+  updates: AppUpdates;
   theme: 'light' | 'dark';
   onThemeChange: (theme: 'light' | 'dark') => void;
   onLanguageChange: (language: AppLanguage) => void;
@@ -236,7 +238,15 @@ function websiteStatus(
   };
 }
 
-function StatusRow({ name, status }: { name: string; status: TrackingStatus }) {
+function StatusRow({
+  name,
+  status,
+  children,
+}: {
+  name: string;
+  status: TrackingStatus;
+  children?: ReactNode;
+}) {
   const toneClass =
     status.tone === 'ok'
       ? 'bg-emerald-500'
@@ -250,13 +260,18 @@ function StatusRow({ name, status }: { name: string; status: TrackingStatus }) {
         aria-hidden="true"
       />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold text-[var(--text)]">
-          <span>{name}</span>
-          <span>{status.label}</span>
+        <div aria-live="polite" aria-atomic="true">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-bold text-[var(--text)]">
+            <span>{name}</span>
+            <span>{status.label}</span>
+          </div>
+          <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
+            {status.detail}
+          </p>
         </div>
-        <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
-          {status.detail}
-        </p>
+        {children && (
+          <div className="mt-2 flex flex-wrap gap-1.5">{children}</div>
+        )}
       </div>
     </div>
   );
@@ -264,6 +279,7 @@ function StatusRow({ name, status }: { name: string; status: TrackingStatus }) {
 
 export function Settings({
   data,
+  updates,
   theme,
   onThemeChange,
   onLanguageChange,
@@ -440,29 +456,6 @@ export function Settings({
                 />
               </div>
             </Row>
-            <Row
-              icon={TimerReset}
-              title={t('idleThreshold')}
-              description={t('idleThresholdDescription')}
-            >
-              <select
-                aria-label={t('idleThresholdSelectLabel')}
-                value={data.settings.idleThresholdSeconds}
-                disabled={settingsPending}
-                onChange={(event) =>
-                  void changeSetting({
-                    idleThresholdSeconds: Number(event.target.value),
-                  })
-                }
-                className="select-compact"
-              >
-                {[1, 3, 5, 10].map((minutes) => (
-                  <option key={minutes} value={minutes * 60}>
-                    {t('minutes', { count: minutes })}
-                  </option>
-                ))}
-              </select>
-            </Row>
           </section>
 
           <section className="card overflow-hidden">
@@ -508,6 +501,8 @@ export function Settings({
         </div>
 
         <div className="space-y-4">
+          <AppUpdateSettings updates={updates} platform={data.platform} />
+
           <section className="card p-5">
             <div className="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10">
               <ShieldCheck size={21} />
@@ -546,64 +541,55 @@ export function Settings({
                 </div>
               )}
 
-              <div
-                className="mt-4 space-y-2"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                <StatusRow name={t('apps')} status={appTrackingStatus} />
-                <StatusRow name={t('sites')} status={siteTrackingStatus} />
-              </div>
-
-              {!data.settings.websiteTrackingEnabled && (
-                <Button
-                  onClick={() =>
-                    void changeSetting({ websiteTrackingEnabled: true })
-                  }
-                  disabled={settingsPending}
-                  className="mt-4 w-full"
-                >
-                  <Globe2 size={14} aria-hidden="true" /> {t('enableSites')}
-                </Button>
-              )}
-
-              <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
-                <div>
-                  <div className="text-[10px] font-bold text-[var(--text)]">
-                    {t('accessibility')}
-                  </div>
-                  <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
-                    {t('accessibilityDescription')}
-                  </p>
+              <div className="mt-4 space-y-2">
+                <StatusRow name={t('apps')} status={appTrackingStatus}>
                   <Button
                     variant="secondary"
                     onClick={() => void openPermissions('accessibility')}
                     disabled={settingsPending}
                     aria-label={t('openAccessibilityLabel')}
-                    className="mt-2 w-full"
+                    title={t('accessibilityDescription')}
+                    className="h-7 gap-1.5 px-2.5 text-[10px]"
                   >
                     {t('openAccessibility')}{' '}
                     <ExternalLink size={12} aria-hidden="true" />
                   </Button>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-[var(--text)]">
-                    {t('automation')}
-                  </div>
-                  <p className="mt-1 text-[9px] leading-4 text-[var(--muted)]">
-                    {t('automationDescription')}
-                  </p>
+                </StatusRow>
+                <StatusRow name={t('sites')} status={siteTrackingStatus}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => void openPermissions('accessibility')}
+                    disabled={settingsPending}
+                    aria-label={t('openAccessibilityLabel')}
+                    title={t('accessibilityDescription')}
+                    className="h-7 gap-1.5 px-2.5 text-[10px]"
+                  >
+                    {t('accessibility')}{' '}
+                    <ExternalLink size={12} aria-hidden="true" />
+                  </Button>
                   <Button
                     variant="secondary"
                     onClick={() => void openPermissions('automation')}
                     disabled={settingsPending}
                     aria-label={t('openAutomationLabel')}
-                    className="mt-2 w-full"
+                    title={t('automationDescription')}
+                    className="h-7 gap-1.5 px-2.5 text-[10px]"
                   >
-                    {t('openAutomation')}{' '}
+                    {t('automation')}{' '}
                     <ExternalLink size={12} aria-hidden="true" />
                   </Button>
-                </div>
+                  {!data.settings.websiteTrackingEnabled && (
+                    <Button
+                      onClick={() =>
+                        void changeSetting({ websiteTrackingEnabled: true })
+                      }
+                      disabled={settingsPending}
+                      className="h-7 w-full gap-1.5 px-2.5 text-[10px]"
+                    >
+                      <Globe2 size={12} aria-hidden="true" /> {t('enableSites')}
+                    </Button>
+                  )}
+                </StatusRow>
               </div>
               <p className="mt-4 text-[9px] leading-4 text-[var(--muted)]">
                 {t('permissionsAftercare')}
@@ -619,7 +605,9 @@ export function Settings({
               <span className="font-semibold text-[var(--muted-strong)]">
                 {t('version')}
               </span>
-              <span className="font-bold text-[var(--text)]">0.1.0 MVP</span>
+              <span className="font-bold text-[var(--text)]">
+                {updates.state?.currentVersion || '—'}
+              </span>
             </div>
             <p className="mt-4 border-t border-[var(--border)] pt-4 text-[10px] leading-5 text-[var(--muted)]">
               {t('waylandNotice')}

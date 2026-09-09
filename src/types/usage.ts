@@ -7,6 +7,24 @@ export interface SiteUsage {
   seconds: number;
 }
 
+export interface ActivityDay {
+  day: string;
+  appId: string;
+  name: string;
+  seconds: number;
+  revision: string;
+}
+
+export interface ActivityDelete {
+  appId: string;
+  day: string;
+  expectedRevision: string;
+}
+
+export interface ActivityUpdate extends ActivityDelete {
+  seconds: number;
+}
+
 export interface AppUsage {
   id: string;
   name: string;

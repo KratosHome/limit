@@ -96,6 +96,48 @@ function writeLimit(database, limit) {
     );
 }
 
+function writeActivityEdit(database, day, entry) {
+  database
+    .prepare(
+      'UPDATE usage_entries SET seconds = ? WHERE day = ? AND app_id = ?',
+    )
+    .run(entry.seconds, day, entry.id);
+  database
+    .prepare('DELETE FROM hourly_usage WHERE day = ? AND app_id = ?')
+    .run(day, entry.id);
+  database
+    .prepare('DELETE FROM site_usage WHERE day = ? AND app_id = ?')
+    .run(day, entry.id);
+  const insertHour = database.prepare(
+    'INSERT INTO hourly_usage (day, app_id, hour, seconds) VALUES (?, ?, ?, ?)',
+  );
+  for (const [hour, seconds] of Object.entries(entry.hourly)) {
+    insertHour.run(day, entry.id, Number(hour), seconds);
+  }
+  const insertSite = database.prepare(
+    'INSERT INTO site_usage (day, app_id, domain, seconds, last_seen_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  for (const site of Object.values(entry.sites)) {
+    insertSite.run(day, entry.id, site.domain, site.seconds, site.lastSeenAt);
+  }
+}
+
+function deleteActivity(database, day, appId) {
+  database
+    .prepare('DELETE FROM usage_entries WHERE day = ? AND app_id = ?')
+    .run(day, appId);
+}
+
+function writeActivityLimitNotifications(database, limits) {
+  if (!limits.length) return;
+  const update = database.prepare(
+    'UPDATE limits SET last_warning_date = ?, last_reached_date = ? WHERE app_id = ?',
+  );
+  for (const limit of limits) {
+    update.run(limit.lastWarningDate, limit.lastReachedDate, limit.id);
+  }
+}
+
 function deleteLimit(database, limitId) {
   database.prepare('DELETE FROM limits WHERE app_id = ?').run(limitId);
 }
@@ -115,10 +157,13 @@ function writeNotificationDate(database, limitId, kind, day) {
 }
 
 module.exports = {
+  deleteActivity,
   deleteLimit,
   writeLimit,
   writeNotificationDate,
   writePausedDate,
   writeSettings,
+  writeActivityEdit,
+  writeActivityLimitNotifications,
   writeUsageEntry,
 };

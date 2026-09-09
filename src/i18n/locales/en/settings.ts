@@ -6,7 +6,7 @@ export default {
   generalSubtitle: 'Background app behavior',
   activityTracking: 'Activity tracking',
   activityTrackingDescription:
-    'Count only time in the active app, not background processes.',
+    'Count time in the foreground app even without mouse or keyboard activity. Pause tracking manually when you need a break.',
   websiteTracking: 'Website tracking',
   websiteTrackingMac:
     'Optionally track time by browser domain. Only domains are stored, locally on this Mac.',
@@ -44,11 +44,6 @@ export default {
   openNotificationSettingsLabel: 'Open macOS notification settings',
   openWindowsNotificationSettings: 'Windows notification settings',
   openWindowsNotificationSettingsLabel: 'Open Windows notification settings',
-  idleThreshold: 'Idle threshold',
-  idleThresholdDescription:
-    'Do not count time while you are away from the computer.',
-  idleThresholdSelectLabel: 'Select idle threshold',
-  minutes: '{{count}} min',
   appearance: 'Appearance',
   appearanceSubtitle: 'Interface appearance',
   theme: 'Theme',
@@ -81,6 +76,43 @@ export default {
     'Return to Limit after changing permissions. Restart the app if macOS does not apply them immediately.',
   about: 'About',
   version: 'Version',
+  updates: {
+    title: 'App updates',
+    currentVersion: 'Installed version {{version}}',
+    loading: 'Loading update status…',
+    working: 'Please wait…',
+    disabled: 'Update checks are unavailable in this build.',
+    idle: 'You’re using the latest version.',
+    checking: 'Checking for updates…',
+    available: 'Version {{version}} is available',
+    downloading: 'Downloading version {{version}}…',
+    progress: 'Downloaded {{percent}}%',
+    ready: 'Version {{version}} is ready to install',
+    manualDetail:
+      'Download the update, then open the installer when you’re ready.',
+    automaticDetail: 'Download the update, then restart Limit to install it.',
+    installerDetail:
+      'Limit will quit when the installer opens. Drag Limit into Applications to replace the current version, then reopen it. Your history and settings will stay on this Mac.',
+    restartDetail: 'Restart Limit to finish installing the update.',
+    check: 'Check for updates',
+    download: 'Download update',
+    install: 'Restart and update',
+    open: 'Open installer and quit',
+    failed: 'Could not update Limit',
+    retry: 'Try again',
+    details: 'View in settings',
+    dismiss: 'Dismiss update notification',
+    releaseNotes: 'What’s new',
+    errors: {
+      load: 'Could not load update status. Please try again.',
+      check:
+        'Could not check for updates. Check your connection and try again.',
+      download:
+        'Could not download the update. Check your connection and try again.',
+      open: 'Could not open the installer. Try opening it again.',
+      install: 'Could not install the update. Restart Limit and try again.',
+    },
+  },
   waylandNotice:
     'Global active-window tracking is unavailable on Linux/Wayland due to system limitations.',
   status: {

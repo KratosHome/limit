@@ -11,6 +11,7 @@ const {
   net,
   Notification,
   powerMonitor,
+  screen,
   session,
   shell,
   systemPreferences,
@@ -20,12 +21,14 @@ const {
   createAccessibilityPermissionController,
 } = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
-const { createAppUpdater } = require('./app-updater.cjs');
+const { createAppUpdater, publicAppUpdateState } = require('./app-updater.cjs');
 const { createElectronUpdateFetch } = require('./electron-update-fetch.cjs');
 const { downloadMacUpdate } = require('./mac-update-download.cjs');
 const { limitAutoUpdate } = require('../package.json');
 const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
+const { createTrackingWidget } = require('./tracking-widget.cjs');
+const { ERROR_CODES, ok, fail } = require('./errors.cjs');
 const { desktopMessages, resolveDesktopLanguage } = require('./i18n.cjs');
 const {
   isLimitNotificationDue,
@@ -44,10 +47,11 @@ let tray = null;
 let isQuitting = false;
 let store = null;
 let tracker = null;
+let trackingWidget = null;
+let pauseStartedAt = null;
 let accessibilityPermission = null;
 let appUpdater = null;
-let announcedUpdatePrompt = null;
-let manualUpdateDialog = null;
+let openingUpdateInstaller = null;
 let waitingForUpdateCleanup = false;
 let updateTimer = null;
 let screenLocked = false;
@@ -121,100 +125,100 @@ function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) createWindow();
   mainWindow.show();
   mainWindow.focus();
-  promptForManualUpdate();
 }
 
-async function downloadManualUpdate() {
-  if (isQuitting || appUpdater?.getState().status === 'downloading') return;
-  const filePath = await appUpdater?.downloadUpdate();
-  if (filePath || isQuitting) return;
-  const t = desktopMessages(store?.getSettings().language);
-  const { response } = await dialog
-    .showMessageBox({
-      type: 'error',
-      title: t.updateAvailableTitle,
-      message: t.updateDownloadFailed,
-      detail: t.updateDownloadFailedDetail,
-      buttons: [t.retryDownload, t.later],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .catch((error) => {
-      console.error('[updates] unable to show download error', error);
-      return { response: 1 };
-    });
-  if (response === 0 && !isQuitting) void downloadManualUpdate();
+function trackingWidgetState() {
+  const settings = store.getSettings();
+  const status = tracker.getStatus();
+  return {
+    trackingEnabled: settings.trackingEnabled,
+    activityState: status.activityState,
+    pauseStartedAt,
+    currentApp: status.currentApp?.name || null,
+    language: settings.language,
+  };
 }
 
-async function openDownloadedUpdate(filePath) {
+function trackingSettingChanged(enabled) {
+  pauseStartedAt = enabled ? null : Date.now();
+  tracker?.resetActivity();
+}
+
+function setTrackingEnabled(enabled, showWidget = false) {
+  if (typeof enabled !== 'boolean')
+    throw new Error('Некоректне значення трекінгу');
+  const previous = store.getSettings().trackingEnabled;
+  const settings = store.updateSettings({ trackingEnabled: enabled });
+  if (previous !== enabled) trackingSettingChanged(enabled);
+  if (!enabled && showWidget) trackingWidget?.show();
+  refreshTrayMenu();
+  broadcastUpdate({ reason: 'settings' });
+  return settings;
+}
+
+function activityResult(action) {
   try {
-    const error = await shell.openPath(filePath);
-    if (error) throw new Error(error);
-    isQuitting = true;
-    app.quit();
+    return ok(action());
   } catch (error) {
-    console.error('[updates] unable to open installer', error);
-    const t = desktopMessages(store?.getSettings().language);
-    await dialog
-      .showMessageBox({
-        type: 'error',
-        title: t.updateAvailableTitle,
-        message: t.updateOpenFailed,
-        detail: t.manualUpdateReadyDetail,
-        buttons: [t.showInFinder],
-      })
-      .catch((dialogError) =>
-        console.error('[updates] unable to show installer error', dialogError),
-      );
-    shell.showItemInFolder(filePath);
+    return fail(error, ERROR_CODES.STORAGE_SAVE);
   }
 }
 
-function promptForManualUpdate() {
-  const state = appUpdater?.getState();
-  const promptKey = `${state?.status}:${state?.version}`;
-  if (
-    isQuitting ||
-    manualUpdateDialog ||
-    !mainWindow?.isVisible() ||
-    !['available', 'installer-ready'].includes(state?.status) ||
-    !state.version ||
-    announcedUpdatePrompt === promptKey
-  )
-    return;
-  announcedUpdatePrompt = promptKey;
-  const t = desktopMessages(store?.getSettings().language);
-  const downloaded = state.status === 'installer-ready';
-  manualUpdateDialog = dialog
-    .showMessageBox(mainWindow, {
-      type: 'info',
-      title: t.updateAvailableTitle,
-      message: downloaded
-        ? t.updateReadyMessage(state.version)
-        : t.updateAvailableMessage(state.version),
-      detail: downloaded ? t.manualUpdateReadyDetail : t.manualUpdateDetail,
-      buttons: downloaded
-        ? [t.openInstallerAndQuit, t.showInFinder, t.later]
-        : [t.downloadUpdate, t.later],
-      defaultId: 0,
-      cancelId: downloaded ? 2 : 1,
-    })
-    .then(({ response }) => {
-      if (isQuitting) return;
-      if (response === 0) {
-        if (downloaded) void openDownloadedUpdate(state.filePath);
-        else void downloadManualUpdate();
-      } else if (downloaded && response === 1) {
-        shell.showItemInFolder(state.filePath);
+function activityChanged(appId) {
+  // The database has committed. A closing window or notification must not
+  // report a failed save and encourage the user to repeat that mutation.
+  const effects = [
+    () => tracker?.resetActivity(),
+    () => {
+      for (const limit of store.getLimits()) {
+        if (limit.appId === appId) clearLimitNotificationState(limit.id);
       }
+    },
+    () => {
+      appIconCache.delete(appId);
+      appIconMissCache.delete(appId);
+    },
+    () => broadcastUpdate({ reason: 'activity-edit' }),
+  ];
+  for (const effect of effects) {
+    try {
+      effect();
+    } catch (error) {
+      console.error('[activity] unable to refresh after saved edit', error);
+    }
+  }
+}
+
+function getAppUpdateState() {
+  return publicAppUpdateState(appUpdater?.getState(), app.getVersion());
+}
+
+async function downloadAppUpdate() {
+  if (isQuitting) return false;
+  return Boolean(await appUpdater?.downloadUpdate());
+}
+
+function openDownloadedUpdate() {
+  if (openingUpdateInstaller) return openingUpdateInstaller;
+  const state = appUpdater?.getState();
+  if (isQuitting || state?.status !== 'installer-ready' || !state.filePath)
+    return Promise.resolve(false);
+  openingUpdateInstaller = Promise.resolve()
+    .then(async () => {
+      const error = await shell.openPath(state.filePath);
+      if (error) throw new Error(error);
+      isQuitting = true;
+      app.quit();
+      return true;
     })
-    .catch((error) => console.error('[updates] unable to show update', error))
+    .catch((error) => {
+      console.error('[updates] unable to open installer', error);
+      return false;
+    })
     .finally(() => {
-      manualUpdateDialog = null;
-      // A very fast download can finish while the previous dialog is closing.
-      if (appUpdater?.getState().status === 'installer-ready')
-        promptForManualUpdate();
+      openingUpdateInstaller = null;
     });
+  return openingUpdateInstaller;
 }
 
 function createWindow() {
@@ -259,7 +263,6 @@ function createWindow() {
   });
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
-    promptForManualUpdate();
   });
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
@@ -359,13 +362,23 @@ function refreshTrayMenu() {
                           : t.checkForUpdates,
             enabled: !['checking', 'downloading'].includes(updateState.status),
             click: () => {
-              if (appUpdater.getState().status === 'downloaded') {
-                appUpdater.installUpdate();
-              } else if (appUpdater.getState().status === 'installer-ready') {
-                announcedUpdatePrompt = null;
-                showMainWindow();
-              } else if (appUpdater.getState().status === 'available') {
-                void downloadManualUpdate();
+              const current = appUpdater.getState();
+              if (
+                current.status === 'downloaded' ||
+                current.errorAction === 'install'
+              ) {
+                if (!appUpdater.installUpdate()) showMainWindow();
+              } else if (current.status === 'installer-ready') {
+                void openDownloadedUpdate().then((opened) => {
+                  if (!opened) showMainWindow();
+                });
+              } else if (
+                current.status === 'available' ||
+                (current.status === 'error' && current.version)
+              ) {
+                void downloadAppUpdate().then((downloaded) => {
+                  if (!downloaded) showMainWindow();
+                });
               } else {
                 void appUpdater.checkForUpdates();
               }
@@ -382,9 +395,7 @@ function refreshTrayMenu() {
       {
         label: trackingEnabled ? t.pauseTracking : t.resumeTracking,
         click: () => {
-          store.updateSettings({ trackingEnabled: !trackingEnabled });
-          broadcastUpdate();
-          refreshTrayMenu();
+          setTrackingEnabled(!trackingEnabled, true);
         },
       },
       { type: 'separator' },
@@ -405,6 +416,7 @@ function refreshTrayMenu() {
 function broadcastUpdate(payload = {}) {
   if (mainWindow && !mainWindow.isDestroyed())
     mainWindow.webContents.send('data:updated', payload);
+  trackingWidget?.refresh();
 }
 
 function resolveMacOSNotificationPermissionHelper() {
@@ -1304,6 +1316,31 @@ function registerIpc() {
     };
   });
   handleIpc('tracker:status', () => tracker.getStatus());
+  handleIpc('tracker:open-widget', () => trackingWidget?.show() ?? false);
+  handleIpc('activity:days', (appId, range) =>
+    activityResult(() => store.getActivityDays(appId, range)),
+  );
+  handleIpc('activity:update', (input) =>
+    activityResult(() => {
+      const result = store.updateActivity(input);
+      activityChanged(result.appId);
+      return result;
+    }),
+  );
+  handleIpc('activity:delete', (input) =>
+    activityResult(() => {
+      const result = store.deleteActivity(input);
+      activityChanged(input.appId);
+      return result;
+    }),
+  );
+  handleIpc('updates:get-state', getAppUpdateState);
+  handleIpc('updates:check', () => appUpdater?.checkForUpdates() ?? false);
+  handleIpc('updates:download', downloadAppUpdate);
+  handleIpc('updates:install', () =>
+    isQuitting ? false : (appUpdater?.installUpdate() ?? false),
+  );
+  handleIpc('updates:open-installer', openDownloadedUpdate);
   handleIpc('app:icon', async (appId) => {
     const normalizedId =
       typeof appId === 'string' && appId.length <= 512 ? appId : '';
@@ -1331,20 +1368,15 @@ function registerIpc() {
     return promise;
   });
   handleIpc('tracker:set-enabled', (enabled) => {
-    if (typeof enabled !== 'boolean')
-      throw new Error('Некоректне значення трекінгу');
-    const settings = store.updateSettings({
-      trackingEnabled: enabled,
-    });
-    refreshTrayMenu();
-    broadcastUpdate({ reason: 'settings' });
-    return settings;
+    return setTrackingEnabled(enabled, true);
   });
   handleIpc('settings:update', (patch) => {
     const safePatch =
       patch && typeof patch === 'object' && !Array.isArray(patch) ? patch : {};
     const previousSettings = store.getSettings();
     const settings = store.updateSettings(safePatch);
+    if (settings.trackingEnabled !== previousSettings.trackingEnabled)
+      trackingSettingChanged(settings.trackingEnabled);
     if (
       process.platform === 'darwin' &&
       safePatch.websiteTrackingEnabled === true &&
@@ -1501,10 +1533,24 @@ if (hasSingleInstanceLock)
     });
     tracker = new ActivityTracker({
       store,
-      getSystemState: (threshold) => powerMonitor.getSystemIdleState(threshold),
+      // Only a locked session stops tracking; the tracker counts idle as active.
+      getSystemState: () => powerMonitor.getSystemIdleState(1),
       hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
       ownProcessId: process.pid,
       intervalMs: 2000,
+    });
+    trackingWidget = createTrackingWidget({
+      BrowserWindow,
+      ipcMain,
+      screen,
+      getState: trackingWidgetState,
+      setTrackingEnabled,
+      showMainWindow,
+      rendererUrl:
+        !app.isPackaged &&
+        process.env.ELECTRON_RENDERER_URL === 'http://127.0.0.1:5173'
+          ? process.env.ELECTRON_RENDERER_URL
+          : null,
     });
     registerIpc();
     createWindow();
@@ -1546,7 +1592,8 @@ if (hasSingleInstanceLock)
               : -1,
           );
         refreshTrayMenu();
-        promptForManualUpdate();
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send('updates:state', getAppUpdateState());
       },
       prepareToQuit: () => {
         isQuitting = true;
@@ -1559,6 +1606,7 @@ if (hasSingleInstanceLock)
     refreshTrayMenu();
     tracker.on('sample', checkLimit);
     tracker.on('updated', () => {
+      trackingWidget?.refresh();
       if (updateTimer) return;
       updateTimer = setTimeout(() => {
         updateTimer = null;
@@ -1599,6 +1647,7 @@ if (hasSingleInstanceLock) {
 
 app.on('before-quit', (event) => {
   isQuitting = true;
+  trackingWidget?.dispose();
   const downloadCleanup = appUpdater?.dispose();
   tracker?.stop();
   if (downloadCleanup) {

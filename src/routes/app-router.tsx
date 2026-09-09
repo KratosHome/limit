@@ -10,13 +10,16 @@ import type {
 } from '../types/settings';
 import type { AppUsage, DashboardData } from '../types/usage';
 import type { AppLanguage } from '../i18n';
+import type { AppUpdates } from '../hooks/use-app-updates';
 
 interface AppRouterProps {
   data: DashboardData;
   theme: 'light' | 'dark';
   view: ViewKey;
+  updates: AppUpdates;
   onEditLimit: (limit?: AppLimit) => void;
   onOpenActivity: () => void;
+  onActivityChanged: () => Promise<void>;
   onOpenLimits: () => void;
   onOpenPermissions: (kind?: PermissionKind) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -31,8 +34,10 @@ export function AppRouter({
   data,
   theme,
   view,
+  updates,
   onEditLimit,
   onOpenActivity,
+  onActivityChanged,
   onOpenLimits,
   onOpenPermissions,
   onOpenSettings,
@@ -46,6 +51,7 @@ export function AppRouter({
     return (
       <Activity
         data={data}
+        onActivityChanged={onActivityChanged}
         onSetLimit={onSetLimit}
         onOpenSettings={onOpenSettings}
       />
@@ -63,6 +69,7 @@ export function AppRouter({
     return (
       <Settings
         data={data}
+        updates={updates}
         theme={theme}
         onThemeChange={onThemeChange}
         onLanguageChange={onLanguageChange}

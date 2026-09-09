@@ -10,6 +10,10 @@ function missingElectronApi(): Promise<never> {
 const unavailableElectronApi: LimitApi = {
   getDashboard: missingElectronApi,
   getStatus: missingElectronApi,
+  getActivityDays: missingElectronApi,
+  updateActivity: missingElectronApi,
+  deleteActivity: missingElectronApi,
+  openTrackingWidget: missingElectronApi,
   setTrackingEnabled: missingElectronApi,
   updateSettings: missingElectronApi,
   saveLimit: missingElectronApi,
@@ -17,6 +21,12 @@ const unavailableElectronApi: LimitApi = {
   pauseLimitToday: missingElectronApi,
   openPermissions: missingElectronApi,
   getAppIcon: missingElectronApi,
+  getAppUpdateState: missingElectronApi,
+  checkForAppUpdates: missingElectronApi,
+  downloadAppUpdate: missingElectronApi,
+  installAppUpdate: missingElectronApi,
+  openAppUpdateInstaller: missingElectronApi,
+  onAppUpdateState: () => () => undefined,
   onDataUpdated: () => () => undefined,
   onLimitNotification: () => () => undefined,
 };

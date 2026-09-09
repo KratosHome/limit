@@ -31,6 +31,31 @@ export default {
     month: '{{duration}} / month',
   },
   addLimit: '+ Limit',
+  editLabel: 'Edit activity for {{app}}',
+  editor: {
+    title: 'Edit activity',
+    subtitle: 'Adjust or remove recorded time for one day.',
+    day: 'Day',
+    hours: 'Hours',
+    minutes: 'Minutes',
+    seconds: 'Seconds',
+    loading: 'Loading recorded activity…',
+    empty: 'No recorded activity for this app in the selected period.',
+    notice:
+      'Hourly totals and site time change proportionally. Tracking continues after saving and can add new time.',
+    invalidDuration: 'Enter a duration between 0 seconds and {{max}}.',
+    loadError: 'Could not load activity.',
+    saveError: 'Could not save activity.',
+    refreshError:
+      'Your change was saved, but statistics could not be refreshed.',
+    reload: 'Reload recorded time',
+    refresh: 'Refresh statistics',
+    deleteDay: 'Delete day',
+    confirmDelete: 'Confirm deletion',
+    deleteConfirmation:
+      'Delete all activity for {{app}} on {{day}}, including site time and launches? This cannot be undone.',
+    keepActivity: 'Keep activity',
+  },
   emptyTitle: 'Nothing found',
   emptyDescription: 'Try another name or reset the category filter.',
 } as const;

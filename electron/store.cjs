@@ -22,13 +22,23 @@ const {
   localDay,
 } = require('./store/date-utils.cjs');
 const {
+  deleteActivity: deleteActivityRecord,
   deleteLimit: deleteLimitRecord,
   writeLimit,
   writeNotificationDate,
   writePausedDate,
   writeSettings,
   writeUsageEntry,
+  writeActivityEdit,
+  writeActivityLimitNotifications,
 } = require('./store/sqlite-writes.cjs');
+const {
+  activityDaySummary,
+  getActivityDays,
+  getActivityForMutation,
+  rearmActivityLimits,
+  scaleActivityEntry,
+} = require('./store/activity-edits.cjs');
 const {
   aggregateUsage,
   compareText,
@@ -150,6 +160,56 @@ class UsageStore {
 
   getTodayUsage(appId, date = new Date()) {
     return getOwn(this.data.usageByDay[localDay(date)], appId)?.seconds || 0;
+  }
+
+  getActivityDays(appId, range) {
+    return getActivityDays(this.data, appId, range);
+  }
+
+  updateActivity(input, now = new Date()) {
+    const entry = getActivityForMutation(this.data, input, { edit: true });
+    const updated = scaleActivityEntry(entry, input.seconds);
+    const rearmedLimits = rearmActivityLimits(
+      this.data,
+      input.day,
+      entry,
+      updated,
+      now,
+    );
+    this.transaction(() => {
+      writeActivityEdit(this.database, input.day, updated);
+      writeActivityLimitNotifications(this.database, rearmedLimits);
+    });
+    Object.defineProperty(this.data.usageByDay[input.day], input.appId, {
+      configurable: true,
+      enumerable: true,
+      value: updated,
+      writable: true,
+    });
+    for (const limit of rearmedLimits) this.data.limits[limit.id] = limit;
+    this.knownAppsCache = null;
+    return activityDaySummary(input.day, updated);
+  }
+
+  deleteActivity(input, now = new Date()) {
+    const entry = getActivityForMutation(this.data, input);
+    const rearmedLimits = rearmActivityLimits(
+      this.data,
+      input.day,
+      entry,
+      null,
+      now,
+    );
+    this.transaction(() => {
+      deleteActivityRecord(this.database, input.day, input.appId);
+      writeActivityLimitNotifications(this.database, rearmedLimits);
+    });
+    const day = this.data.usageByDay[input.day];
+    delete day[input.appId];
+    if (!Object.keys(day).length) delete this.data.usageByDay[input.day];
+    for (const limit of rearmedLimits) this.data.limits[limit.id] = limit;
+    this.knownAppsCache = null;
+    return true;
   }
 
   getTodaySiteUsage(appId, siteDomain, date = new Date()) {

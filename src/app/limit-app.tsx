@@ -6,9 +6,12 @@ import { AppHeader } from '../layout/app-header';
 import { AppRouter } from '../routes/app-router';
 import { useLimitApp } from '../hooks/use-limit-app';
 import { AppOverlays } from './app-overlays';
+import { useAppUpdates } from '../hooks/use-app-updates';
+import { TrackingPauseBanner } from '../layout/tracking-pause-banner';
 
 export function LimitApp() {
   const app = useLimitApp();
+  const updates = useAppUpdates();
 
   return (
     <AppShell
@@ -27,6 +30,7 @@ export function LimitApp() {
           customRange={app.customRange}
           language={app.language}
           trackingEnabled={app.data?.settings.trackingEnabled}
+          trackingPending={app.trackingPending}
           theme={app.theme}
           onPeriodChange={app.setPeriod}
           onCustomRangeChange={app.setCustomRange}
@@ -35,9 +39,22 @@ export function LimitApp() {
             app.setTheme((value) => (value === 'light' ? 'dark' : 'light'))
           }
           onTrackingToggle={app.toggleTracking}
+          onOpenTrackingWidget={app.openTrackingWidget}
         />
       }
     >
+      {app.data && !app.data.settings.trackingEnabled && (
+        <TrackingPauseBanner
+          pending={app.trackingPending}
+          onResume={app.toggleTracking}
+          onOpenWidget={app.openTrackingWidget}
+        />
+      )}
+      {app.trackingError && (
+        <p role="alert" className="mb-4 text-[12px] text-rose-500">
+          {app.trackingError}
+        </p>
+      )}
       <DashboardContent
         data={app.data}
         loading={app.loading}
@@ -49,10 +66,12 @@ export function LimitApp() {
             data={app.data}
             theme={app.theme}
             view={app.view}
+            updates={updates}
             onEditLimit={(limit) =>
               app.setModal(limit ? { existing: limit } : {})
             }
             onOpenActivity={() => app.setView('activity')}
+            onActivityChanged={() => app.loadDashboard()}
             onOpenLimits={() => app.setView('limits')}
             onOpenPermissions={(kind) => limitApi.openPermissions(kind)}
             onOpenSettings={() => app.setView('settings')}
@@ -69,6 +88,8 @@ export function LimitApp() {
         data={app.data}
         modal={app.modal}
         toast={app.toast}
+        updates={updates}
+        onOpenUpdateSettings={() => app.setView('settings')}
         onCloseModal={() => app.setModal(null)}
         onDeleteLimit={app.deleteLimit}
         onOpenLimitsFromToast={() => {
