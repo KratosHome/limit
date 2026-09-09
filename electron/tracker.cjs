@@ -173,19 +173,36 @@ class ActivityTracker extends EventEmitter {
       }
       this.activityState = 'active';
       if (websiteTrackingEnabled) {
-        this.lastWebsiteError = accessibilityBlocked
-          ? 'accessibility-permission'
+        const websiteError = accessibilityBlocked
+          ? 'app-accessibility-permission'
           : windowInfo?.websiteTrackingError || null;
-        if (accessibilityBlocked) {
-          this.websitePermissionState = 'denied';
-        } else if (this.lastWebsiteError) {
-          this.websitePermissionState = websitePermissionState(
-            this.lastWebsiteError,
-          );
-        } else if (isSupportedBrowserWindow(windowInfo)) {
-          if (typeof windowInfo.url === 'string' && windowInfo.url.trim()) {
-            this.websitePermissionState = 'granted';
-          } else if (this.websitePermissionState !== 'granted') {
+        const supportedBrowser = isSupportedBrowserWindow(windowInfo);
+        if (websiteError) {
+          this.lastWebsiteError = websiteError;
+          this.websitePermissionState = websitePermissionState(websiteError);
+        } else if (
+          supportedBrowser &&
+          typeof windowInfo.url === 'string' &&
+          windowInfo.url.trim()
+        ) {
+          this.lastWebsiteError = null;
+          this.websitePermissionState = 'granted';
+        } else if (windowInfo?.owner?.name) {
+          // A successful read confirms Accessibility recovery even while
+          // Settings or Limit is foreground. Browser Automation still needs
+          // a successful URL read before its previous denial can be cleared.
+          if (
+            this.lastWebsiteError === 'app-accessibility-permission' ||
+            this.lastWebsiteError === 'accessibility-permission'
+          ) {
+            this.lastWebsiteError = null;
+            this.websitePermissionState = 'pending';
+          }
+          if (
+            supportedBrowser &&
+            this.websitePermissionState !== 'granted' &&
+            !this.lastWebsiteError
+          ) {
             this.websitePermissionState = 'unavailable';
           }
         }

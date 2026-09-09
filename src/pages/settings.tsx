@@ -202,9 +202,20 @@ function websiteStatus(
     data.tracker.websitePermissionState === 'denied' ||
     data.tracker.websitePermissionState === 'error'
   ) {
+    const details = {
+      'app-accessibility-permission': 'status.appAccessibilityDetail',
+      'accessibility-permission': 'status.browserAccessibilityDetail',
+      'automation-permission': 'status.browserAutomationDetail',
+      'url-provider-error': 'status.browserReadErrorDetail',
+    } as const;
+    const error = data.tracker.lastWebsiteError;
     return {
       label: t('status.attention'),
-      detail: t('status.permissionsDetail'),
+      detail: t(
+        error && error in details
+          ? details[error as keyof typeof details]
+          : 'status.permissionsDetail',
+      ),
       tone: 'warning',
     };
   }

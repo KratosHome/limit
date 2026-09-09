@@ -15,13 +15,20 @@ function setup(t) {
     path.join(os.tmpdir(), 'limit-activity-test-'),
   );
   const databasePath = path.join(directory, 'usage.sqlite3');
-  const store = new UsageStore(databasePath);
+  const stores = [];
+  function openStore() {
+    const store = new UsageStore(databasePath);
+    stores.push(store);
+    return store;
+  }
+  const store = openStore();
   store.updateSettings({ websiteTrackingEnabled: true });
   t.after(() => {
-    if (store.database) store.close();
+    // Windows cannot remove a database while any reopened handle remains open.
+    for (const openedStore of stores) openedStore.close();
     fs.rmSync(directory, { force: true, recursive: true });
   });
-  return { store, databasePath };
+  return { store, openStore };
 }
 
 function sample(store, seconds, hour = 10, domain = 'example.com', id = appId) {
@@ -39,7 +46,7 @@ function editInput(store, seconds, id = appId) {
 }
 
 test('daily activity edits preserve metadata and persist consistent hours, sites and limits', (t) => {
-  const { store, databasePath } = setup(t);
+  const { store, openStore } = setup(t);
   sample(store, 120, 10);
   sample(store, 180, 11, 'second.example');
   sample(store, 100, 12, null);
@@ -90,8 +97,7 @@ test('daily activity edits preserve metadata and persist consistent hours, sites
   assert.equal(store.getCurrentLimitUsage(siteLimit, new Date(2026, 8, 9)), 60);
 
   store.close();
-  const reopened = new UsageStore(databasePath);
-  t.after(() => reopened.close());
+  const reopened = openStore();
   assert.deepEqual(reopened.getActivityDays(appId, range), [edited]);
   assert.equal(
     reopened.data.usageByDay[day][appId].sites['example.com'].seconds,
@@ -185,7 +191,7 @@ test('zero and fractional edits keep hourly and site totals bounded', (t) => {
 });
 
 test('delete removes only its daily app usage and children, retains limits and persists', (t) => {
-  const { store, databasePath } = setup(t);
+  const { store, openStore } = setup(t);
   sample(store, 100);
   sample(store, 75, 11, null, 'other');
   const limit = store.saveLimit({
@@ -218,8 +224,7 @@ test('delete removes only its daily app usage and children, retains limits and p
   );
 
   store.close();
-  const reopened = new UsageStore(databasePath);
-  t.after(() => reopened.close());
+  const reopened = openStore();
   assert.equal(reopened.getActivityDays(appId, range).length, 0);
   assert.equal(reopened.getActivityDays('other', range)[0].seconds, 75);
 });
@@ -443,7 +448,7 @@ test('edits to yesterday rearm current week/month limits but preserve current da
 });
 
 test('delete rearms current affected limits while preserving historical markers and other apps', (t) => {
-  const { store, databasePath } = setup(t);
+  const { store, openStore } = setup(t);
   const now = new Date(2026, 8, 9, 12);
   sample(store, 600);
   sample(store, 600, 11, null, 'other');
@@ -474,8 +479,7 @@ test('delete rearms current affected limits while preserving historical markers 
   assert.equal(store.getLimit(appLimit.id).pausedDate, day);
   assert.deepEqual(store.getLimit(otherLimit.id), otherBefore);
   store.close();
-  const reopened = new UsageStore(databasePath);
-  t.after(() => reopened.close());
+  const reopened = openStore();
   assert.equal(reopened.getLimit(appLimit.id).lastWarningDate, '2026-08-01');
   assert.equal(reopened.getLimit(appLimit.id).lastReachedDate, null);
   assert.equal(reopened.getLimit(appLimit.id).pausedDate, day);

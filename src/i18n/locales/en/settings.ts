@@ -129,14 +129,25 @@ export default {
     checkingDetail: 'Limit is waiting for the next active app.',
     websitesDisabledDetail:
       'Enable this feature to start collecting time by domain.',
-    permissionsDetail: 'Check Accessibility and Automation.',
+    permissionsDetail:
+      'Keep a website in the foreground for a few seconds so Limit can check access to the tab.',
+    appAccessibilityDetail:
+      'macOS does not recognize access for this copy of Limit. Re-enable Limit in Accessibility, then fully quit and reopen the app.',
+    browserAccessibilityDetail:
+      'Limit has access, but macOS is blocking tab reading. Fully quit and reopen Limit; if needed, re-enable it in Accessibility.',
+    browserAutomationDetail:
+      'Expand Limit in Automation settings and allow access to your browser. Then return to the open website.',
+    browserReadErrorDetail:
+      'Could not read the browser tab. Restart Limit and the browser, then try again with a regular website.',
     noDomain: 'No domain received',
-    noDomainDetail: 'Open Arc and check Accessibility and Automation.',
+    noDomainDetail:
+      'Keep a regular website in the foreground in Arc, Chrome, or Safari for a few seconds. If macOS asks, allow Limit to access the browser.',
     domainReceived: 'Received domain {{domain}}.',
     accessConfirmed: 'Access confirmed',
     accessConfirmedDetail:
       'Domains will be collected while a browser is active.',
     waitingBrowser: 'Enabled · waiting for browser',
-    waitingBrowserDetail: 'Open a regular Arc tab to verify access.',
+    waitingBrowserDetail:
+      'Keep a website in the foreground in Arc, Chrome, or Safari for a few seconds. Limit cannot check its domain while Settings is in front.',
   },
 } as const;

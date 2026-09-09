@@ -11,10 +11,11 @@ function createHarness(t) {
     idleThresholdSeconds: 60,
   };
   const system = { state: 'active' };
+  const accessibility = { granted: true };
   const windowInfo = {
     owner: { name: 'Editor', bundleId: 'com.example.editor', processId: 200 },
   };
-  const provider = { read: () => windowInfo, calls: 0 };
+  const provider = { read: () => windowInfo, calls: 0, options: [] };
   const samples = [];
   const updates = [];
   t.mock.method(performance, 'now', () => clock.now);
@@ -26,10 +27,12 @@ function createHarness(t) {
       },
     },
     getSystemState: () => system.state,
+    hasAccessibilityPermission: () => accessibility.granted,
     ownProcessId: 100,
-    activeWindowProvider: () => {
+    activeWindowProvider: (options) => {
       provider.calls += 1;
-      return provider.read();
+      provider.options.push(options);
+      return provider.read(options);
     },
   });
   tracker.on('updated', (status) => updates.push(status));
@@ -37,6 +40,7 @@ function createHarness(t) {
     clock,
     settings,
     system,
+    accessibility,
     windowInfo,
     provider,
     samples,
@@ -52,6 +56,151 @@ function createHarness(t) {
     },
   };
 }
+
+test('granting Accessibility recovers website status while Limit stays foreground', async (t) => {
+  const h = createHarness(t);
+  h.settings.websiteTrackingEnabled = true;
+  h.accessibility.granted = false;
+  h.windowInfo.owner = {
+    name: 'Limit',
+    bundleId: 'com.example.limit',
+    processId: 100,
+  };
+  await h.tickAt(1000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(
+    h.tracker.getStatus().lastWebsiteError,
+    'app-accessibility-permission',
+  );
+  assert.deepEqual(h.provider.options.at(-1), {
+    websiteTrackingEnabled: false,
+  });
+
+  h.accessibility.granted = true;
+  await h.tickAt(6000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'pending');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, null);
+  assert.equal(h.tracker.getStatus().currentApp, null);
+  assert.deepEqual(h.provider.options.at(-1), {
+    websiteTrackingEnabled: true,
+  });
+
+  h.windowInfo.owner = {
+    name: 'Google Chrome',
+    bundleId: 'com.google.Chrome',
+    processId: 300,
+  };
+  h.windowInfo.url = 'https://www.example.com/watch';
+  await h.tickAt(11000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'granted');
+  assert.deepEqual(h.tracker.getStatus().currentApp.site, {
+    domain: 'example.com',
+  });
+  await h.tickAt(16000);
+  assert.deepEqual(
+    h.samples.map(({ sample }) => sample.site),
+    [{ domain: 'example.com' }],
+  );
+});
+
+test('provider Accessibility denial recovers only after a successful window read', async (t) => {
+  const h = createHarness(t);
+  h.settings.websiteTrackingEnabled = true;
+  h.windowInfo.websiteTrackingError = 'accessibility-permission';
+  await h.tickAt(1000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(
+    h.tracker.getStatus().lastWebsiteError,
+    'accessibility-permission',
+  );
+
+  h.provider.read = () => null;
+  await h.tickAt(6000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(
+    h.tracker.getStatus().lastWebsiteError,
+    'accessibility-permission',
+  );
+
+  delete h.windowInfo.websiteTrackingError;
+  h.provider.read = () => h.windowInfo;
+  await h.tickAt(11000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'pending');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, null);
+});
+
+test('revoking and granting Accessibility updates website status and resumes domain tracking', async (t) => {
+  const h = createHarness(t);
+  h.settings.websiteTrackingEnabled = true;
+  h.windowInfo.owner = {
+    name: 'Safari',
+    bundleId: 'com.apple.Safari',
+    processId: 300,
+  };
+  h.provider.read = ({ websiteTrackingEnabled }) => ({
+    ...h.windowInfo,
+    ...(websiteTrackingEnabled ? { url: 'https://example.com/page' } : {}),
+  });
+  await h.tickAt(1000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'granted');
+
+  h.accessibility.granted = false;
+  await h.tickAt(6000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(
+    h.tracker.getStatus().lastWebsiteError,
+    'app-accessibility-permission',
+  );
+  assert.equal(h.tracker.getStatus().currentApp.site, null);
+
+  h.accessibility.granted = true;
+  await h.tickAt(11000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'granted');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, null);
+  assert.deepEqual(h.tracker.getStatus().currentApp.site, {
+    domain: 'example.com',
+  });
+  await h.tickAt(16000);
+  assert.deepEqual(
+    h.samples.map(({ sample }) => sample.site),
+    [{ domain: 'example.com' }, null, { domain: 'example.com' }],
+  );
+});
+
+test('browser Automation denial persists across app switches until a browser URL succeeds', async (t) => {
+  const h = createHarness(t);
+  h.settings.websiteTrackingEnabled = true;
+  const browser = {
+    name: 'Google Chrome',
+    bundleId: 'com.google.Chrome',
+    processId: 300,
+  };
+  const editor = h.windowInfo.owner;
+  h.windowInfo.owner = browser;
+  h.windowInfo.websiteTrackingError = 'automation-permission';
+  await h.tickAt(1000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, 'automation-permission');
+
+  h.windowInfo.owner = editor;
+  delete h.windowInfo.websiteTrackingError;
+  await h.tickAt(6000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, 'automation-permission');
+
+  h.windowInfo.owner = browser;
+  await h.tickAt(11000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'denied');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, 'automation-permission');
+
+  h.windowInfo.url = 'https://example.com/page';
+  await h.tickAt(16000);
+  assert.equal(h.tracker.getStatus().websitePermissionState, 'granted');
+  assert.equal(h.tracker.getStatus().lastWebsiteError, null);
+  assert.deepEqual(h.tracker.getStatus().currentApp.site, {
+    domain: 'example.com',
+  });
+});
 
 function deferNextRead(h) {
   const result = Promise.withResolvers();

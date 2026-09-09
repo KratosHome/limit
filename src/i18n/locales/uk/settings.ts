@@ -132,14 +132,24 @@ export default {
     checkingDetail: 'Limit очікує наступний активний застосунок.',
     websitesDisabledDetail:
       'Увімкніть функцію, щоб почати збирати час за доменами.',
-    permissionsDetail: 'Перевірте Accessibility та Automation.',
+    permissionsDetail:
+      'Відкрийте сайт у браузері на кілька секунд, щоб Limit перевірив доступ до вкладки.',
+    appAccessibilityDetail:
+      'macOS не підтверджує доступ для цієї копії Limit. Перепідключіть Limit у Accessibility та повністю перезапустіть застосунок.',
+    browserAccessibilityDetail:
+      'Доступ для Limit є, але macOS блокує читання вкладки. Повністю закрийте й запустіть Limit; за потреби перепідключіть його в Accessibility.',
+    browserAutomationDetail:
+      'У налаштуваннях Automation розкрийте Limit і дозвольте доступ до браузера. Потім поверніться до відкритого сайту.',
+    browserReadErrorDetail:
+      'Не вдалося прочитати вкладку браузера. Перезапустіть Limit і браузер та повторіть перевірку зі звичайним сайтом.',
     noDomain: 'Домен не отримано',
-    noDomainDetail: 'Відкрийте Arc і перевірте Accessibility та Automation.',
+    noDomainDetail:
+      'Залиште звичайний сайт активним в Arc, Chrome або Safari на кілька секунд. Якщо з’явиться запит macOS, дозвольте Limit доступ до браузера.',
     domainReceived: 'Отримано домен {{domain}}.',
     accessConfirmed: 'Доступ підтверджено',
     accessConfirmedDetail: 'Домени збиратимуться, коли браузер буде активним.',
     waitingBrowser: 'Увімкнено · очікує браузер',
     waitingBrowserDetail:
-      'Відкрийте звичайну вкладку Arc, щоб перевірити доступ.',
+      'Залиште сайт активним в Arc, Chrome або Safari на кілька секунд. Поки відкриті налаштування, Limit не може перевірити домен.',
   },
 } as const;
