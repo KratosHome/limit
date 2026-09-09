@@ -1,6 +1,6 @@
 export default {
   eyebrow: 'Daily focus',
-  title: '2134132Your digital day',
+  title: 'Your digital day',
   stats: {
     activeTime: 'Active time',
     firstComparison: 'First data available for comparison',
