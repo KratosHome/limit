@@ -51,6 +51,27 @@ npm install
 npm run dev
 ```
 
+## Збірка встановщиків
+
+Команди є в `scripts` файлу `package.json`:
+
+```bash
+npm run build:mac # macOS: universal DMG для Intel та Apple Silicon
+npm run build:win # Windows: EXE для x64
+npm run build:all # послідовно обидва встановщики на підготовленому Mac
+```
+
+Готові файли: `installers/Limit-Local-<версія>-mac-universal.dmg` та
+`installers/Limit-Local-<версія>-win-x64.exe`. Це локальні збірки з базовою
+версією з `package.json`; production-оновлення в них вимкнено, щоб старіший
+опублікований код не замінив нові локальні зміни. Команди не публікують реліз.
+Звичайний `npm run build` збирає лише renderer.
+
+Для `build:mac` потрібні macOS і Xcode Command Line Tools. `build:win` після
+чистого встановлення залежностей запускайте на Windows; для кросзбірки на Mac
+потрібен окремо підготовлений Windows-модуль `get-windows`. Це також обов’язкова
+умова для `build:all`. Докладніше — у [встановщиках для розсилання](#встановщики-для-розсилання).
+
 ## Graphify
 
 [Graphify](https://github.com/Graphify-Labs/graphify) будує локальний граф
@@ -91,12 +112,13 @@ npm run package   # unpacked desktop build для поточної ОС
 npm run package:mac:local # локальний ad-hoc signed Limit.app для macOS
 npm run package:win:x64 # unpacked Windows x64 build
 npm run test:notification:mac # один нативний test-банер macOS
-npm run dist      # release-артефакт без платного сертифіката
-npm run dist:win:x64 # непідписаний Windows x64 installer
-npm run dist:mac:universal # ad-hoc universal DMG + ZIP для macOS
-npm run installers:win # зібрати EXE та скопіювати в installers/
-npm run installers:mac # зібрати DMG та скопіювати в installers/
+npm run dist      # release-артефакт для CI після призначення версії
+npm run dist:win:x64 # release Windows x64 installer для CI
+npm run dist:mac:universal # release universal DMG + ZIP для CI
 ```
+
+Попередні назви `installers:mac` і `installers:win` залишаються доступними;
+`build:mac` і `build:win` викликають саме їх.
 
 Після `npm install` Husky автоматично вмикає Git hooks. `pre-commit` форматує та
 перевіряє лише staged-файли, а `pre-push` запускає ESLint, Prettier, тести й build.
@@ -135,21 +157,25 @@ Windows-збірка таргетує x64; інсталятор та систе�
 
 Готові файли зберігаються у `installers/`:
 
-- `Limit-<версія>-win-x64.exe` — Windows x64, без сертифіката видавця.
-- `Limit-<версія>-mac-universal.dmg` — Intel та Apple Silicon, локальний ad-hoc
+- `Limit-Local-<версія>-win-x64.exe` — Windows x64, без сертифіката видавця.
+- `Limit-Local-<версія>-mac-universal.dmg` — Intel та Apple Silicon, локальний ad-hoc
   підпис без нотаризації Apple.
 
 ```bash
 npm ci
-npm run installers:win # на Windows
-npm run installers:mac # на macOS
+npm run build:win # на Windows
+npm run build:mac # на macOS
 ```
 
 Mac-збірку потрібно виконувати на macOS із Xcode Command Line Tools.
 Після чистого встановлення залежностей Windows-збірку запускайте на Windows:
 для кросзбірки на Mac потрібно окремо підготувати Windows-модуль `get-windows`.
-GitHub Actions уже використовує відповідні ОС. Команди не публікують реліз. Проміжні файли,
-ZIP і метадані оновлення зберігаються окремо у `release/publish/`.
+GitHub Actions уже використовує відповідні ОС. Команди не публікують реліз.
+Проміжні файли й ZIP зберігаються окремо у `release/local/`.
+Локальні встановщики не перевіряють production-оновлення. Для розсилання
+версії, що отримуватиме наступні оновлення, завантажуйте встановщики без
+`Local` у назві з [GitHub Releases](https://github.com/KratosHome/limit/releases).
+Їх збирає CI з призначеним номером релізу у `release/publish/`.
 
 Для встановлення достатньо надіслати людині один `.exe` або `.dmg` для її ОС.
 Докладні кроки та пояснення системних попереджень — у
@@ -175,7 +201,7 @@ Signing secrets не потрібні. Для публікації workflow ви
 відхиляє спробу опублікувати старішу або вже доступну версію. Незавершені зміни
 краще тримати в окремих гілках: кожний push у `main` запускає випуск для людей.
 
-Встановлений застосунок перевіряє оновлення при запуску та кожні чотири
+Застосунок, встановлений із GitHub Release, перевіряє оновлення при запуску та кожні чотири
 години. Нова версія з’являється в тості й у блоці «Оновлення застосунку»
 в налаштуваннях: поточна версія, опис змін із релізу та прогрес завантаження.
 Завантаження починається лише після натискання кнопки. Системні діалоги
@@ -196,7 +222,9 @@ Signing secrets не потрібні. Для публікації workflow ви
 У меню tray є номер встановленої версії та ручна перевірка оновлень.
 Оновлення не змінює окремий каталог зі статистикою та налаштуваннями.
 Помилки пишуться в `logs/updates.log` у каталозі даних Limit; журнал має
-ротацію з обмеженням 1 МіБ. Dev-збірки не перевіряють production-оновлення.
+ротацію з обмеженням 1 МіБ. Dev-збірки та локальні встановщики не перевіряють
+production-оновлення: їхня базова версія `0.1.0` не описує вік коду порівняно
+з релізами `0.1.1`, `0.1.2` тощо, яким CI призначає номери окремо.
 
 Метадані `.yml`, `.zip` і `.blockmap` потрібно залишати у GitHub Release,
 хоча надсилати їх користувачам не потрібно. Публічний репозиторій дозволяє

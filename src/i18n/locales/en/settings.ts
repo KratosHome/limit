@@ -81,7 +81,8 @@ export default {
     currentVersion: 'Installed version {{version}}',
     loading: 'Loading update status…',
     working: 'Please wait…',
-    disabled: 'Update checks are unavailable in this build.',
+    disabled:
+      'Local builds do not update from GitHub, so your current changes are preserved. Updates are available in release builds.',
     idle: 'You’re using the latest version.',
     checking: 'Checking for updates…',
     available: 'Version {{version}} is available',

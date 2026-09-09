@@ -21,7 +21,11 @@ const {
   createAccessibilityPermissionController,
 } = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
-const { createAppUpdater, publicAppUpdateState } = require('./app-updater.cjs');
+const {
+  createAppUpdater,
+  isNewerAppVersion,
+  publicAppUpdateState,
+} = require('./app-updater.cjs');
 const { createElectronUpdateFetch } = require('./electron-update-fetch.cjs');
 const { downloadMacUpdate } = require('./mac-update-download.cjs');
 const { limitAutoUpdate } = require('../package.json');
@@ -201,7 +205,12 @@ async function downloadAppUpdate() {
 function openDownloadedUpdate() {
   if (openingUpdateInstaller) return openingUpdateInstaller;
   const state = appUpdater?.getState();
-  if (isQuitting || state?.status !== 'installer-ready' || !state.filePath)
+  if (
+    isQuitting ||
+    state?.status !== 'installer-ready' ||
+    !state.filePath ||
+    !isNewerAppVersion(state.version, app.getVersion())
+  )
     return Promise.resolve(false);
   openingUpdateInstaller = Promise.resolve()
     .then(async () => {

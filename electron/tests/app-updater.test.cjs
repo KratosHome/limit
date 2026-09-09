@@ -3,6 +3,7 @@ const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const {
   createAppUpdater,
+  isNewerAppVersion,
   publicAppUpdateState,
 } = require('../app-updater.cjs');
 
@@ -33,7 +34,11 @@ function harness(options = {}) {
     installs += 1;
   };
   const controller = createAppUpdater({
-    app: { isPackaged: true, whenReady: () => Promise.resolve() },
+    app: {
+      isPackaged: true,
+      getVersion: () => '0.1.0',
+      whenReady: () => Promise.resolve(),
+    },
     autoUpdater: updater,
     enabled: true,
     onStateChange: (state) => states.push(state),
@@ -84,6 +89,8 @@ test('checks on startup and every four hours without forcing a restart', async (
   assert.equal(h.checks, 1);
   assert.equal(h.updater.autoDownload, false);
   assert.equal(h.updater.autoInstallOnAppQuit, false);
+  assert.equal(h.updater.allowDowngrade, false);
+  assert.equal(h.updater.allowPrerelease, false);
   assert.equal(h.intervals.size, 1);
   const timer = [...h.intervals.values()][0];
   assert.equal(timer.milliseconds, 4 * 60 * 60_000);
@@ -741,6 +748,109 @@ test('late release check events and failures never overwrite a clicked download'
         manualInstall ? 'installer-ready' : 'downloaded',
       );
       h.controller.dispose();
+    }
+  }
+});
+
+test('update versions compare numeric components and reject invalid or unsupported versions', () => {
+  for (const [candidate, current, newer] of [
+    ['0.1.10', '0.1.9', true],
+    ['0.1.9', '0.1.10', false],
+    ['1.0.0', '0.99.65535', true],
+    ['0.1.6', '0.1.6', false],
+    ['0.1.5', '0.1.6', false],
+    ['0.1.7-beta.1', '0.1.6', false],
+    ['garbage', '0.1.6', false],
+    ['0.1.7', undefined, false],
+    ['0.1.65536', '0.1.6', false],
+    ['0.1.07', '0.1.6', false],
+  ]) {
+    assert.equal(isNewerAppVersion(candidate, current), newer);
+  }
+});
+
+for (const manualInstall of [false, true]) {
+  test(`${manualInstall ? 'manual' : 'native'} updates never offer or download equal, older or invalid releases`, async (t) => {
+    const h = harness({
+      manualInstall,
+      app: {
+        isPackaged: true,
+        getVersion: () => '0.1.6',
+        whenReady: () => Promise.resolve(),
+      },
+      downloadInstaller: () => {
+        throw new Error('Must not download');
+      },
+    });
+    t.after(() => h.controller.dispose());
+    h.updater.downloadUpdate = () => {
+      throw new Error('Must not download');
+    };
+    await h.controller.start();
+    await h.controller.checkForUpdates();
+    for (const version of ['0.1.5', '0.1.6', 'bad', undefined]) {
+      h.updater.emit('update-available', { version });
+      assert.deepEqual(h.controller.getState(), { status: 'idle' });
+      assert.equal(await h.controller.downloadUpdate(), null);
+      h.updater.emit('update-downloaded', { version });
+      assert.deepEqual(h.controller.getState(), { status: 'idle' });
+      assert.equal(h.controller.installUpdate(), false);
+    }
+    assert.equal(h.installs, 0);
+    h.updater.emit('update-available', { version: '0.1.7' });
+    assert.equal(h.controller.getState().status, 'available');
+    assert.equal(h.controller.getState().version, '0.1.7');
+    h.updater.emit('update-available', { version: '0.1.6' });
+    assert.deepEqual(h.controller.getState(), { status: 'idle' });
+  });
+}
+
+test('download and install actions recheck the running version before proceeding', async (t) => {
+  let version = '0.1.0';
+  const h = harness({
+    app: {
+      isPackaged: true,
+      getVersion: () => version,
+      whenReady: () => Promise.resolve(),
+    },
+  });
+  t.after(() => h.controller.dispose());
+  await h.controller.start();
+  await h.controller.checkForUpdates();
+  h.updater.emit('update-available', { version: '0.2.0' });
+  version = '0.2.0';
+  assert.equal(await h.controller.downloadUpdate(), null);
+  assert.deepEqual(h.controller.getState(), { status: 'idle' });
+
+  version = '0.1.0';
+  h.updater.emit('update-downloaded', { version: '0.2.0' });
+  version = '0.3.0';
+  assert.equal(h.controller.installUpdate(), false);
+  assert.equal(h.installs, 0);
+  assert.deepEqual(h.controller.getState(), { status: 'idle' });
+});
+
+test('stale public snapshots cannot expose a downgrade action or its release notes', () => {
+  for (const status of [
+    'available',
+    'downloading',
+    'downloaded',
+    'installer-ready',
+    'error',
+  ]) {
+    for (const version of ['0.1.5', '0.1.6', 'invalid']) {
+      assert.deepEqual(
+        publicAppUpdateState(
+          {
+            status,
+            version,
+            releaseNotes: 'Old release',
+            errorAction: 'download',
+          },
+          '0.1.6',
+        ),
+        { status: 'idle', currentVersion: '0.1.6' },
+      );
     }
   }
 });

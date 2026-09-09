@@ -183,3 +183,22 @@ test('preload exposes narrow update actions and cleans up state subscriptions', 
   api.onAppUpdateState(null)();
   assert.equal(listeners.size, 0);
 });
+
+test('the installer IPC refuses cached equal, older or invalid versions', async () => {
+  for (const version of ['0.0.9', '0.1.0', 'invalid', undefined]) {
+    const h = mainHarness();
+    h.setup({
+      getState: () => ({
+        status: 'installer-ready',
+        version,
+        filePath: '/private/cached.dmg',
+      }),
+    });
+    assert.equal(
+      await h.handlers.get('updates:open-installer')(h.event),
+      false,
+    );
+    assert.deepEqual(h.opened, []);
+    assert.equal(h.quits, 0);
+  }
+});

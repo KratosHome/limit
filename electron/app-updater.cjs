@@ -1,5 +1,24 @@
 const CHECK_INTERVAL_MS = 4 * 60 * 60_000;
 
+function isNewerAppVersion(candidate, current) {
+  function parts(version) {
+    if (
+      typeof version !== 'string' ||
+      !/^(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})\.(0|[1-9]\d{0,4})$/.test(version)
+    )
+      return null;
+    const values = version.split('.').map(Number);
+    return values.every((value) => value <= 65535) ? values : null;
+  }
+  const next = parts(candidate);
+  const installed = parts(current);
+  if (!next || !installed) return false;
+  for (let index = 0; index < next.length; index += 1) {
+    if (next[index] !== installed[index]) return next[index] > installed[index];
+  }
+  return false;
+}
+
 function releaseDetails(info) {
   if (!info) return {};
   const details = {};
@@ -20,6 +39,8 @@ function releaseDetails(info) {
 }
 
 function publicAppUpdateState(state, currentVersion) {
+  if (state?.version && !isNewerAppVersion(state.version, currentVersion))
+    return { status: 'idle', currentVersion };
   const result = { status: state?.status ?? 'disabled', currentVersion };
   if (typeof state?.version === 'string') result.version = state.version;
   if (Number.isFinite(state?.percent)) result.percent = state.percent;
@@ -54,6 +75,16 @@ function createAppUpdater({
   let downloadPromise = null;
   let downloadAbort = null;
   let nativeUpdateReady = false;
+
+  function canUpdateTo(version) {
+    return isNewerAppVersion(version, app.getVersion?.());
+  }
+
+  function discardUpdate() {
+    availableInfo = null;
+    nativeUpdateReady = false;
+    setState('idle');
+  }
 
   function getState() {
     return Object.freeze({ ...state });
@@ -135,6 +166,10 @@ function createAppUpdater({
     },
     'update-available': (info) => {
       if (!canAcceptCheckEvent()) return;
+      if (!canUpdateTo(info?.version)) {
+        discardUpdate();
+        return;
+      }
       availableInfo = structuredClone(info);
       setState('available', info?.version);
     },
@@ -153,6 +188,7 @@ function createAppUpdater({
     },
     'update-downloaded': (info) => {
       if (manualInstall) return;
+      if (!canUpdateTo(info?.version)) return;
       nativeUpdateReady = true;
       setState('downloaded', info?.version);
     },
@@ -204,6 +240,10 @@ function createAppUpdater({
     if (!active || !ready || disposed || installing)
       return Promise.resolve(null);
     if (manualInstall && !downloadInstaller) return Promise.resolve(null);
+    if (state.version && !canUpdateTo(state.version)) {
+      discardUpdate();
+      return Promise.resolve(null);
+    }
     if (downloadPromise) return downloadPromise;
     if (nativeUpdateReady) return Promise.resolve(true);
     if (['installer-ready', 'downloaded'].includes(state.status))
@@ -227,6 +267,10 @@ function createAppUpdater({
       })
       .then((filePath) => {
         if (disposed) return null;
+        if (!canUpdateTo(info.version)) {
+          discardUpdate();
+          return null;
+        }
         if (!manualInstall) {
           if (!Array.isArray(filePath) || filePath.length === 0)
             throw new Error('The update download did not return an installer');
@@ -262,6 +306,8 @@ function createAppUpdater({
     started = true;
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.allowDowngrade = false;
+    autoUpdater.allowPrerelease = false;
     autoUpdater.logger = logger;
     for (const [event, listener] of Object.entries(listeners))
       autoUpdater.on(event, listener);
@@ -290,6 +336,10 @@ function createAppUpdater({
       (state.status !== 'downloaded' && state.errorAction !== 'install')
     )
       return false;
+    if (!canUpdateTo(state.version)) {
+      discardUpdate();
+      return false;
+    }
     installing = true;
     lastError = null;
     setState('downloaded', state.version);
@@ -332,4 +382,8 @@ function createAppUpdater({
   };
 }
 
-module.exports = { createAppUpdater, publicAppUpdateState };
+module.exports = {
+  createAppUpdater,
+  isNewerAppVersion,
+  publicAppUpdateState,
+};

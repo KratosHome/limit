@@ -15,6 +15,9 @@
     "dev:mac:signed": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs",
     "test:notification:mac": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs --notification-test",
     "build": "tsc --noEmit && vite build",
+    "build:mac": "npm run installers:mac",
+    "build:win": "npm run installers:win",
+    "build:all": "npm run build:mac && npm run build:win",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "commitlint": "commitlint",
@@ -33,9 +36,9 @@
     "dist": "npm run build && electron-builder --config scripts/electron-builder.release.cjs",
     "dist:mac:universal": "npm run build && electron-builder --config scripts/electron-builder.release.cjs --mac --universal",
     "dist:win:x64": "npm run build && electron-builder --config scripts/electron-builder.release.cjs --win --x64",
-    "installers:win": "npm run dist:win:x64 -- --publish never && node scripts/collect-installers.cjs --win",
-    "installers:mac": "npm run dist:mac:universal -- --publish never && node scripts/collect-installers.cjs --mac",
-    "installers:collect": "node scripts/collect-installers.cjs",
+    "installers:win": "npm run build && electron-builder --config scripts/electron-builder.installers.cjs --win --x64 --publish never && node scripts/collect-installers.cjs --local --win",
+    "installers:mac": "npm run build && electron-builder --config scripts/electron-builder.installers.cjs --mac --universal --publish never && node scripts/collect-installers.cjs --local --mac",
+    "installers:collect": "node scripts/collect-installers.cjs --local",
     "prepare": "husky"
   },
   "lint-staged": {
