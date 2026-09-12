@@ -16,6 +16,13 @@ export function AppUpdateToast({
   if (!toast) return null;
   const action = appUpdateAction(toast);
   const failure = error || toast.errorAction;
+  const actionLabel = pending
+    ? 'updates.working'
+    : failure
+      ? 'updates.retry'
+      : action === 'download'
+        ? 'updates.toastDownload'
+        : (`updates.${action}` as const);
 
   return (
     <div className="w-[360px] max-w-[calc(100vw-40px)] rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-[0_18px_50px_rgba(15,23,42,.18)]">
@@ -51,13 +58,21 @@ export function AppUpdateToast({
           {t(`updates.errors.${failure}`)}
         </p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <Button size="sm" disabled={pending} onClick={() => void run(action)}>
-          {t(`updates.${action}`)}
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[12px] font-semibold leading-4">
+        <Button
+          size="none"
+          disabled={pending}
+          onClick={() => void run(action)}
+          aria-label={t(pending || failure ? actionLabel : `updates.${action}`)}
+          className="min-h-8 min-w-0 whitespace-normal py-2"
+        >
+          {t(actionLabel)}
         </Button>
         <Button
           variant="link"
-          size="none"
+          size="sm"
+          aria-label={t('updates.detailsLabel')}
+          className="whitespace-nowrap"
           onClick={() => {
             dismissToast();
             onOpenSettings();
