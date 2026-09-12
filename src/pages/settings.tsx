@@ -512,7 +512,7 @@ export function Settings({
         </div>
 
         <div className="space-y-4">
-          <AppUpdateSettings updates={updates} platform={data.platform} />
+          <AppUpdateSettings updates={updates} />
 
           <section className="card p-5">
             <div className="mb-4 grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10">

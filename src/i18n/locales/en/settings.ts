@@ -73,7 +73,7 @@ export default {
   openAutomation: 'Open Automation',
   openAutomationLabel: 'Open macOS Automation settings',
   permissionsAftercare:
-    'Return to Limit after changing permissions. Restart the app if macOS does not apply them immediately.',
+    'Enable Limit in Accessibility and allow browser access in Automation. If websites stop tracking after an update, remove Limit from Accessibility and add it again from Applications. Fully quit and reopen Limit.',
   about: 'About',
   version: 'Version',
   updates: {
@@ -90,11 +90,13 @@ export default {
     progress: 'Downloaded {{percent}}%',
     ready: 'Version {{version}} is ready to install',
     manualDetail:
-      'Download the update, then open the installer when you’re ready.',
-    automaticDetail: 'Download the update, then restart Limit to install it.',
+      'This copy of Limit updates through an installer. Download it and replace Limit in Applications. Your history and settings will be preserved.',
+    automaticDetail:
+      'Download the update and choose “Restart and update”. Limit will install it automatically, preserving your history and settings.',
     installerDetail:
-      'Limit will quit when the installer opens. Drag Limit into Applications to replace the current version, then reopen it. Your history and settings will stay on this Mac.',
-    restartDetail: 'Restart Limit to finish installing the update.',
+      'Limit will quit when the installer opens. Replace Limit in Applications and launch it from there. Your history and settings will be preserved. If websites stop tracking, check “macOS permissions” below.',
+    restartDetail:
+      'Restarting will install the update automatically. Your history and settings will be preserved.',
     check: 'Check for updates',
     download: 'Download update',
     install: 'Restart and update',

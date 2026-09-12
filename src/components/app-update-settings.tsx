@@ -5,13 +5,7 @@ import { appUpdateAction } from '../types/updates';
 import { releaseNotesText } from '../lib/release-notes';
 import { Button } from './ui/button';
 
-export function AppUpdateSettings({
-  updates,
-  platform,
-}: {
-  updates: AppUpdates;
-  platform: string;
-}) {
+export function AppUpdateSettings({ updates }: { updates: AppUpdates }) {
   const { t } = useTranslation('settings');
   const { state, pending, error, run } = updates;
   const status = state?.status;
@@ -67,7 +61,7 @@ export function AppUpdateSettings({
               ? 'updates.installerDetail'
               : status === 'downloaded'
                 ? 'updates.restartDetail'
-                : platform === 'darwin'
+                : state?.installMode === 'manual'
                   ? 'updates.manualDetail'
                   : 'updates.automaticDetail',
           )}

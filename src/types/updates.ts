@@ -9,6 +9,7 @@ export interface AppUpdateState {
     | 'installer-ready'
     | 'error';
   currentVersion: string;
+  installMode: 'manual' | 'automatic';
   version?: string;
   percent?: number;
   releaseName?: string;

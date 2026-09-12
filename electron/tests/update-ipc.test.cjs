@@ -5,7 +5,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 const updaterModule = require('../app-updater.cjs');
 
-function mainHarness() {
+function mainHarness({ platform = 'darwin', metadata = {} } = {}) {
   const handlers = new Map();
   const opened = [];
   let quits = 0;
@@ -16,6 +16,7 @@ function mainHarness() {
       isPackaged: true,
       getPath: () => '/tmp',
       setPath: () => {},
+      setAppUserModelId: () => {},
       requestSingleInstanceLock: () => true,
       on: () => {},
       whenReady: () => new Promise(() => {}),
@@ -38,10 +39,11 @@ function mainHarness() {
     require: (name) => {
       if (name === 'electron') return electron;
       if (name === './app-updater.cjs') return updaterModule;
+      if (name === '../package.json') return metadata;
       if (name.startsWith('node:')) return require(name);
       return {};
     },
-    process: { platform: 'darwin', env: {} },
+    process: { platform, env: {} },
     console: { error: () => {} },
     __dirname: path.resolve(__dirname, '..'),
   });
@@ -87,6 +89,7 @@ test('update IPC trusts only the main frame and exposes only public state', asyn
     status: 'installer-ready',
     currentVersion: '0.1.0',
     version: '0.2.0',
+    installMode: 'manual',
   });
   for (const channel of [
     'updates:get-state',
@@ -109,6 +112,26 @@ test('update IPC trusts only the main frame and exposes only public state', asyn
   assert.equal(checks, 1);
   assert.deepEqual(h.opened, []);
   assert.equal(h.dialogs, 0);
+});
+
+test('update IPC reports the build installation mode even before finding an update', () => {
+  for (const [platform, metadata, expected] of [
+    ['darwin', {}, 'manual'],
+    ['darwin', { limitMacNativeUpdate: false }, 'manual'],
+    ['darwin', { limitMacNativeUpdate: 'true' }, 'manual'],
+    ['darwin', { limitMacNativeUpdate: true }, 'automatic'],
+    ['win32', {}, 'automatic'],
+  ]) {
+    const h = mainHarness({ platform, metadata });
+    let state = { status: 'idle' };
+    h.setup({ getState: () => state });
+    const getState = h.handlers.get('updates:get-state');
+    assert.equal(getState(h.event).installMode, expected);
+    // Rejecting a stale cached update must retain the installation guidance.
+    state = { status: 'downloaded', version: '0.1.0' };
+    assert.equal(getState(h.event).status, 'idle');
+    assert.equal(getState(h.event).installMode, expected);
+  }
 });
 
 test('installer opens only on an explicit request using the verified main-process path', async () => {

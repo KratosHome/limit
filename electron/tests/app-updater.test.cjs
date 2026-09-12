@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const test = require('node:test');
 const {
+  appUpdateInstallMode,
   createAppUpdater,
   isNewerAppVersion,
   publicAppUpdateState,
@@ -155,6 +156,54 @@ test('native updates wait for download and install clicks, with shared progress'
   assert.equal(h.controller.installUpdate(), true);
   assert.equal(h.installs, 1);
   h.controller.dispose();
+});
+
+test('signed Mac releases install in place while legacy releases keep the DMG fallback', async () => {
+  const signed = require('../../scripts/electron-builder.mac-signed.cjs');
+  const legacy = require('../../scripts/electron-builder.release.cjs');
+  for (const [config, expectedMode] of [
+    [signed, 'automatic'],
+    [legacy, 'manual'],
+  ]) {
+    const installMode = appUpdateInstallMode(
+      'darwin',
+      config.extraMetadata.limitMacNativeUpdate,
+    );
+    assert.equal(installMode, expectedMode);
+    let manualDownloads = 0;
+    let nativeDownloads = 0;
+    const h = harness({
+      manualInstall: installMode === 'manual',
+      downloadInstaller: async () => {
+        manualDownloads++;
+        return '/tmp/Limit.dmg';
+      },
+    });
+    h.updater.downloadUpdate = async () => {
+      nativeDownloads++;
+      h.updater.emit('update-downloaded', { version: '0.2.0' });
+      return ['/tmp/update.zip'];
+    };
+    await h.controller.start();
+    await h.controller.checkForUpdates();
+    h.updater.emit('update-available', manualUpdateInfo());
+    assert.equal(manualDownloads + nativeDownloads, 0);
+    assert.ok(await h.controller.downloadUpdate());
+    assert.equal(h.installs, 0);
+    if (expectedMode === 'automatic') {
+      assert.equal(nativeDownloads, 1);
+      assert.equal(manualDownloads, 0);
+      assert.equal(h.controller.getState().status, 'downloaded');
+      assert.equal(h.controller.installUpdate(), true);
+      assert.equal(h.installs, 1);
+    } else {
+      assert.equal(manualDownloads, 1);
+      assert.equal(nativeDownloads, 0);
+      assert.equal(h.controller.getState().status, 'installer-ready');
+      assert.equal(h.controller.installUpdate(), false);
+    }
+    h.controller.dispose();
+  }
 });
 
 test('failed native downloads retry on click and do not trigger a new release check', async () => {

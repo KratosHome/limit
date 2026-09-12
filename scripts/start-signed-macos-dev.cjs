@@ -2,6 +2,7 @@ const childProcess = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const developmentConfig = require('./electron-builder.mac-development.cjs');
 
 if (process.platform !== 'darwin') {
   throw new Error('Підписаний dev-запуск доступний лише на macOS');
@@ -14,47 +15,54 @@ for (const argument of process.argv.slice(2)) {
 }
 
 const projectRoot = path.resolve(__dirname, '..');
-const releaseRoot = path.join(projectRoot, 'release');
+const releaseRoot = path.join(
+  projectRoot,
+  developmentConfig.directories.output,
+);
+const productName = developmentConfig.productName;
+const bundleName = `${productName}.app`;
 const candidates =
   process.arch === 'arm64'
     ? [
-        path.join(releaseRoot, 'mac-arm64', 'Limit.app'),
-        path.join(releaseRoot, 'mac-universal', 'Limit.app'),
+        path.join(releaseRoot, 'mac-arm64', bundleName),
+        path.join(releaseRoot, 'mac-universal', bundleName),
       ]
     : [
-        path.join(releaseRoot, 'mac', 'Limit.app'),
-        path.join(releaseRoot, 'mac-x64', 'Limit.app'),
-        path.join(releaseRoot, 'mac-universal', 'Limit.app'),
+        path.join(releaseRoot, 'mac', bundleName),
+        path.join(releaseRoot, 'mac-x64', bundleName),
+        path.join(releaseRoot, 'mac-universal', bundleName),
       ];
 const appPath = candidates.find((candidate) => fs.existsSync(candidate));
 
 if (!appPath)
   throw new Error(
-    'Не знайдено packaged Limit.app. Спочатку виконайте npm run package:mac:local.',
+    `Не знайдено packaged ${bundleName}. Спочатку виконайте npm run package:mac:local.`,
   );
 if (
   !fs.lstatSync(appPath).isDirectory() ||
   fs.lstatSync(appPath).isSymbolicLink()
 ) {
-  throw new Error('Очікував звичайний каталог Limit.app у release');
+  throw new Error(
+    `Очікував звичайний каталог ${bundleName} у release/development`,
+  );
 }
 
 const realReleaseRoot = fs.realpathSync(releaseRoot);
 const realAppPath = fs.realpathSync(appPath);
 if (
   !realAppPath.startsWith(`${realReleaseRoot}${path.sep}`) ||
-  path.basename(realAppPath) !== 'Limit.app'
+  path.basename(realAppPath) !== bundleName
 ) {
-  throw new Error('Неприпустимий шлях до Limit.app');
+  throw new Error(`Неприпустимий шлях до ${bundleName}`);
 }
 
-const executablePath = path.join(realAppPath, 'Contents', 'MacOS', 'Limit');
+const executablePath = path.join(realAppPath, 'Contents', 'MacOS', productName);
 if (
   !fs.existsSync(executablePath) ||
   !fs.lstatSync(executablePath).isFile() ||
   fs.lstatSync(executablePath).isSymbolicLink()
 ) {
-  throw new Error('Не знайдено виконуваний файл packaged Limit.app');
+  throw new Error(`Не знайдено виконуваний файл packaged ${bundleName}`);
 }
 
 const verification = childProcess.spawnSync(
@@ -64,7 +72,7 @@ const verification = childProcess.spawnSync(
 );
 if (verification.error) throw verification.error;
 if (verification.status !== 0)
-  throw new Error('Limit.app не має чинного локального підпису');
+  throw new Error(`${bundleName} не має чинного локального підпису`);
 
 const childEnvironment = { ...process.env };
 delete childEnvironment.ELECTRON_RENDERER_URL;
@@ -79,7 +87,7 @@ if (isNotificationTest) {
   delete childEnvironment.LIMIT_SYSTEM_NOTIFICATION_TEST_ID;
 }
 
-console.log(`Запускаю підписаний Limit.app: ${realAppPath}`);
+console.log(`Запускаю підписаний ${bundleName}: ${realAppPath}`);
 const child = childProcess.spawn(executablePath, [], {
   cwd: projectRoot,
   env: childEnvironment,
@@ -93,7 +101,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 child.once('error', (error) => {
-  console.error('Не вдалося запустити підписаний Limit.app:', error);
+  console.error(`Не вдалося запустити підписаний ${bundleName}:`, error);
   process.exitCode = 1;
 });
 

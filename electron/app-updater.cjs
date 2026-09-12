@@ -1,5 +1,13 @@
 const CHECK_INTERVAL_MS = 4 * 60 * 60_000;
 
+function appUpdateInstallMode(platform, macNativeUpdate) {
+  // Only the Developer ID release configuration opts into Squirrel.Mac.
+  // Legacy and ad-hoc builds must retain their verified DMG fallback.
+  return platform === 'darwin' && macNativeUpdate !== true
+    ? 'manual'
+    : 'automatic';
+}
+
 function isNewerAppVersion(candidate, current) {
   function parts(version) {
     if (
@@ -38,10 +46,17 @@ function releaseDetails(info) {
   return details;
 }
 
-function publicAppUpdateState(state, currentVersion) {
+function publicAppUpdateState(state, currentVersion, installMode) {
+  const mode = ['manual', 'automatic'].includes(installMode)
+    ? { installMode }
+    : {};
   if (state?.version && !isNewerAppVersion(state.version, currentVersion))
-    return { status: 'idle', currentVersion };
-  const result = { status: state?.status ?? 'disabled', currentVersion };
+    return { status: 'idle', currentVersion, ...mode };
+  const result = {
+    status: state?.status ?? 'disabled',
+    currentVersion,
+    ...mode,
+  };
   if (typeof state?.version === 'string') result.version = state.version;
   if (Number.isFinite(state?.percent)) result.percent = state.percent;
   if (['check', 'download', 'install'].includes(state?.errorAction))
@@ -383,6 +398,7 @@ function createAppUpdater({
 }
 
 module.exports = {
+  appUpdateInstallMode,
   createAppUpdater,
   isNewerAppVersion,
   publicAppUpdateState,

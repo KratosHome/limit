@@ -14,7 +14,7 @@ module.exports = {
   asar: { smartUnpack: false },
   directories: { output: 'release' },
   artifactName: 'Limit-Local-${version}-${os}-${arch}.${ext}',
-  extraMetadata: { limitAutoUpdate: false },
+  extraMetadata: { limitAutoUpdate: false, limitMacNativeUpdate: false },
   electronLanguages: ['en-US', 'uk'],
   files: commonFiles,
   mac: {

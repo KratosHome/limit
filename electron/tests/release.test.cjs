@@ -91,6 +91,30 @@ function fakeGitHub(
 
 const releaseCommit = 'a'.repeat(40);
 
+test('native Mac updates require the dedicated signed release without changing app identity', () => {
+  const base = require('../../scripts/electron-builder.base.cjs');
+  const local = require('../../scripts/electron-builder.installers.cjs');
+  const signed = require('../../scripts/electron-builder.mac-signed.cjs');
+  assert.equal(signed.appId, 'ua.limit.desktop');
+  assert.equal(signed.productName, base.productName);
+  assert.equal(signed.extraMetadata.limitAutoUpdate, true);
+  assert.equal(signed.extraMetadata.limitMacNativeUpdate, true);
+  assert.equal(signed.forceCodeSigning, true);
+  assert.equal(signed.mac.identity, undefined);
+  assert.equal(signed.mac.notarize, true);
+  assert.equal(signed.afterSign, 'scripts/electron-builder-after-sign.cjs');
+  assert.deepEqual(signed.publish, releaseConfig.publish);
+  assert.deepEqual(signed.mac.target, [
+    { target: 'dmg', arch: ['universal'] },
+    { target: 'zip', arch: ['universal'] },
+  ]);
+  for (const config of [base, local, releaseConfig]) {
+    assert.equal(config.extraMetadata.limitMacNativeUpdate, false);
+    assert.equal(config.appId, signed.appId);
+  }
+  assert.equal(local.extraMetadata.limitAutoUpdate, false);
+});
+
 test('release versions advance without changing the source base or re-run version', () => {
   assert.equal(deriveReleaseVersion('0.1.0', '42'), '0.1.42');
   assert.equal(deriveReleaseVersion('1.2.3', '42'), '1.2.45');

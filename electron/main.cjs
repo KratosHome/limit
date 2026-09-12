@@ -22,13 +22,18 @@ const {
 } = require('./accessibility-permission.cjs');
 const { fileIconSize, resolveApplicationIconPath } = require('./app-icon.cjs');
 const {
+  appUpdateInstallMode,
   createAppUpdater,
   isNewerAppVersion,
   publicAppUpdateState,
 } = require('./app-updater.cjs');
 const { createElectronUpdateFetch } = require('./electron-update-fetch.cjs');
 const { downloadMacUpdate } = require('./mac-update-download.cjs');
-const { limitAutoUpdate } = require('../package.json');
+const {
+  limitAutoUpdate,
+  limitMacNativeUpdate,
+  limitSignedDevelopment,
+} = require('../package.json');
 const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { createTrackingWidget } = require('./tracking-widget.cjs');
@@ -90,7 +95,8 @@ const MAX_PENDING_APP_ICONS = 128;
 const isSignedDevelopment =
   process.platform === 'darwin' &&
   app.isPackaged &&
-  process.env.LIMIT_SIGNED_DEVELOPMENT === '1';
+  (limitSignedDevelopment === true ||
+    process.env.LIMIT_SIGNED_DEVELOPMENT === '1');
 const shouldTestSystemNotification =
   isSignedDevelopment && process.env.LIMIT_SYSTEM_NOTIFICATION_TEST === '1';
 const notificationTestId = /^\d{1,12}$/.test(
@@ -194,7 +200,11 @@ function activityChanged(appId) {
 }
 
 function getAppUpdateState() {
-  return publicAppUpdateState(appUpdater?.getState(), app.getVersion());
+  return publicAppUpdateState(
+    appUpdater?.getState(),
+    app.getVersion(),
+    appUpdateInstallMode(process.platform, limitMacNativeUpdate),
+  );
 }
 
 async function downloadAppUpdate() {
@@ -484,7 +494,10 @@ async function getMacOSNotificationSettings() {
       'enabled',
     ]);
     if (
-      settings?.bundleIdentifier !== 'ua.limit.desktop' ||
+      settings?.bundleIdentifier !==
+        (isSignedDevelopment
+          ? 'ua.limit.desktop.development'
+          : 'ua.limit.desktop') ||
       !authorizationStatuses.has(settings.authorizationStatus) ||
       !notificationSettings.has(settings.alertSetting) ||
       !notificationSettings.has(settings.notificationCenterSetting) ||
@@ -1580,7 +1593,9 @@ if (hasSingleInstanceLock)
     appUpdater = createAppUpdater({
       app,
       enabled: updatesEnabled,
-      manualInstall: process.platform === 'darwin',
+      manualInstall:
+        appUpdateInstallMode(process.platform, limitMacNativeUpdate) ===
+        'manual',
       downloadInstaller: (info, options) =>
         downloadMacUpdate(info, {
           ...options,

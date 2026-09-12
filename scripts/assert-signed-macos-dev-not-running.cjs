@@ -1,5 +1,6 @@
 const childProcess = require('node:child_process');
 const path = require('node:path');
+const developmentConfig = require('./electron-builder.mac-development.cjs');
 
 if (process.platform !== 'darwin') process.exit(0);
 
@@ -8,12 +9,12 @@ const executablePaths = ['mac-arm64', 'mac-x64', 'mac-universal', 'mac'].map(
   (directory) =>
     path.join(
       projectRoot,
-      'release',
+      developmentConfig.directories.output,
       directory,
-      'Limit.app',
+      `${developmentConfig.productName}.app`,
       'Contents',
       'MacOS',
-      'Limit',
+      developmentConfig.productName,
     ),
 );
 const processList = childProcess.spawnSync('ps', ['-axo', 'pid=,command='], {
@@ -40,6 +41,6 @@ if (running.length > 0) {
     .map(({ pid, command }) => `${pid}: ${command}`)
     .join('\n');
   throw new Error(
-    `Завершіть підписаний Limit через tray перед повторною збіркою:\n${processSummary}`,
+    `Завершіть ${developmentConfig.productName} через tray перед повторною збіркою:\n${processSummary}`,
   );
 }

@@ -82,6 +82,10 @@ async function loadActiveWindowProvider(
 
   if (platform === 'darwin') {
     const binary = path.join(root, 'main');
+    // Browser Automation may wait for consent. Give that prompt time to be
+    // answered, but never let a helper hold the tracker's polling lock forever.
+    const appExecutionOptions = { timeout: 4000, killSignal: 'SIGKILL' };
+    const websiteExecutionOptions = { timeout: 30000, killSignal: 'SIGKILL' };
     const appOnlyArguments = [
       '--no-accessibility-permission',
       '--no-screen-recording-permission',
@@ -90,16 +94,23 @@ async function loadActiveWindowProvider(
       const arguments_ = websiteTrackingEnabled
         ? ['--no-screen-recording-permission']
         : appOnlyArguments;
+      const executionOptions = websiteTrackingEnabled
+        ? websiteExecutionOptions
+        : appExecutionOptions;
 
       try {
-        const { stdout } = await execute(binary, arguments_);
+        const { stdout } = await execute(binary, arguments_, executionOptions);
         return JSON.parse(stdout);
       } catch (error) {
         if (!websiteTrackingEnabled) throw error;
 
         // URL lookup needs macOS Accessibility/Automation access. If it is
         // unavailable, retain foreground-app tracking without requesting URLs.
-        const { stdout } = await execute(binary, appOnlyArguments);
+        const { stdout } = await execute(
+          binary,
+          appOnlyArguments,
+          appExecutionOptions,
+        );
         return {
           ...JSON.parse(stdout),
           websiteTrackingError: websiteTrackingErrorKind(error),

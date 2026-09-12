@@ -67,9 +67,19 @@ jobs:
         shell: bash
         run: npm run dist:win:x64 -- --publish never
       - name: Build ad-hoc signed universal Mac installers
-        if: matrix.platform == 'mac'
+        if: matrix.platform == 'mac' && vars.LIMIT_MAC_SIGNED_RELEASE != 'true'
         shell: bash
         run: npm run dist -- --mac --universal --publish never
+      - name: Build signed and notarized universal Mac update
+        if: matrix.platform == 'mac' && vars.LIMIT_MAC_SIGNED_RELEASE == 'true'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run dist:mac:signed -- --publish never
       - name: Upload built artifacts
         uses: actions/upload-artifact@v7
         with:
