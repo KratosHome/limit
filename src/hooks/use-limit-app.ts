@@ -53,54 +53,60 @@ export function useLimitApp() {
   const rangeRef = useRef(range);
   rangeRef.current = range;
 
-  const loadDashboard = useCallback(async (showLoader = false) => {
-    const requestedRange = rangeRef.current;
-    const requestId = ++dashboardRequestId.current;
-    const isCurrentRequest = () =>
-      requestId === dashboardRequestId.current &&
-      requestedRange.from === rangeRef.current.from &&
-      requestedRange.to === rangeRef.current.to;
-    if (showLoader) setLoading(true);
-    try {
-      const next = await limitApi.getDashboard(requestedRange);
-      if (!isCurrentRequest()) return;
-      setData({
-        ...next,
-        notificationPermission: next.notificationPermission ?? {
-          authorizationStatus: 'unknown',
-          canPresent: false,
-        },
-        apps: next.apps.map((app) => ({
-          ...app,
-          limitPeriod:
-            app.limitMinutes == null
-              ? null
-              : normalizeLimitPeriod(app.limitPeriod),
-        })),
-        knownApps: next.knownApps.map((app) => ({
-          ...app,
-          sites: Array.isArray(app.sites) ? app.sites : [],
-        })),
-        limits: next.limits.map((limit) => ({
-          ...limit,
-          id: limit.id || limit.appId,
-          siteDomain: limit.siteDomain || null,
-          period: normalizeLimitPeriod(limit.period),
-        })),
-        limitUsage: next.limitUsage ?? {},
-      });
-      setError('');
-    } catch (reason) {
-      if (!isCurrentRequest()) return;
-      setError(
-        reason instanceof Error
-          ? translateError(reason.message, 'dashboardLoad')
-          : i18n.t('errors:dashboardLoad'),
-      );
-    } finally {
-      if (isCurrentRequest()) setLoading(false);
-    }
-  }, []);
+  const loadDashboard = useCallback(
+    async (showLoader = false, options: { throwOnError?: boolean } = {}) => {
+      const requestedRange = rangeRef.current;
+      const requestId = ++dashboardRequestId.current;
+      const isCurrentRequest = () =>
+        requestId === dashboardRequestId.current &&
+        requestedRange.from === rangeRef.current.from &&
+        requestedRange.to === rangeRef.current.to;
+      if (showLoader) setLoading(true);
+      try {
+        const next = await limitApi.getDashboard(requestedRange);
+        if (!isCurrentRequest()) return;
+        setData({
+          ...next,
+          notificationPermission: next.notificationPermission ?? {
+            authorizationStatus: 'unknown',
+            canPresent: false,
+          },
+          apps: next.apps.map((app) => ({
+            ...app,
+            limitPeriod:
+              app.limitMinutes == null
+                ? null
+                : normalizeLimitPeriod(app.limitPeriod),
+          })),
+          knownApps: next.knownApps.map((app) => ({
+            ...app,
+            sites: Array.isArray(app.sites) ? app.sites : [],
+          })),
+          limits: next.limits.map((limit) => ({
+            ...limit,
+            id: limit.id || limit.appId,
+            siteDomain: limit.siteDomain || null,
+            period: normalizeLimitPeriod(limit.period),
+          })),
+          limitUsage: next.limitUsage ?? {},
+        });
+        setError('');
+      } catch (reason) {
+        // Mutation dialogs own their retry flow. Background refreshes remain safe
+        // to call without awaiting or catching a rejected promise.
+        if (options.throwOnError) throw reason;
+        if (!isCurrentRequest()) return;
+        setError(
+          reason instanceof Error
+            ? translateError(reason.message, 'dashboardLoad')
+            : i18n.t('errors:dashboardLoad'),
+        );
+      } finally {
+        if (isCurrentRequest()) setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadDashboard(true);

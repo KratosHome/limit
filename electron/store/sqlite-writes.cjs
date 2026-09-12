@@ -128,6 +128,14 @@ function deleteActivity(database, day, appId) {
     .run(day, appId);
 }
 
+function deleteSiteUsage(database, appId, domain, range) {
+  database
+    .prepare(
+      'DELETE FROM site_usage WHERE app_id = ? AND domain = ? AND day >= ? AND day <= ?',
+    )
+    .run(appId, domain, range.from, range.to);
+}
+
 function writeActivityLimitNotifications(database, limits) {
   if (!limits.length) return;
   const update = database.prepare(
@@ -159,6 +167,7 @@ function writeNotificationDate(database, limitId, kind, day) {
 module.exports = {
   deleteActivity,
   deleteLimit,
+  deleteSiteUsage,
   writeLimit,
   writeNotificationDate,
   writePausedDate,

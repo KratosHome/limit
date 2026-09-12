@@ -75,18 +75,45 @@ function activityDaySummary(day, entry) {
   };
 }
 
-function getActivityDays(data, appId, range) {
-  validateActivityAppId(appId);
+function validateActivityRange(range) {
+  if (!range || typeof range !== 'object' || Array.isArray(range))
+    throw new AppError(ERROR_CODES.INVALID_ACTIVITY);
   activityDayStart(range?.from);
   activityDayStart(range?.to);
   if (range.from > range.to || range.to > addDays(range.from, 369))
     throw new AppError(ERROR_CODES.INVALID_ACTIVITY);
+}
+
+function getActivityDays(data, appId, range) {
+  validateActivityAppId(appId);
+  validateActivityRange(range);
   return enumerateDays(range.from, range.to)
     .reverse()
     .flatMap((day) => {
       const entry = getOwn(getOwn(data.usageByDay, day), appId);
       return entry ? [activityDaySummary(day, entry)] : [];
     });
+}
+
+function getSiteUsageDeletion(data, input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new AppError(ERROR_CODES.INVALID_ACTIVITY);
+  validateActivityAppId(input.appId);
+  validateActivityRange(input.range);
+  if (typeof input.domain !== 'string' || input.domain.length > 512)
+    throw new AppError(ERROR_CODES.INVALID_ACTIVITY);
+  const domain = normalizeSiteDomain(input.domain);
+  if (!domain) throw new AppError(ERROR_CODES.INVALID_ACTIVITY);
+  const changes = enumerateDays(input.range.from, input.range.to).flatMap(
+    (day) => {
+      const previousEntry = getOwn(getOwn(data.usageByDay, day), input.appId);
+      if (!getOwn(previousEntry?.sites, domain)) return [];
+      const sites = { ...previousEntry.sites };
+      delete sites[domain];
+      return [{ day, previousEntry, nextEntry: { ...previousEntry, sites } }];
+    },
+  );
+  return { appId: input.appId, domain, range: input.range, changes };
 }
 
 function getActivityForMutation(data, input, { edit = false } = {}) {
@@ -173,23 +200,38 @@ function scaleActivityEntry(entry, seconds) {
 }
 
 function rearmActivityLimits(data, day, previousEntry, nextEntry, now) {
+  return rearmChangedActivityLimits(
+    data,
+    [{ day, previousEntry, nextEntry }],
+    now,
+  );
+}
+
+function rearmChangedActivityLimits(data, changes, now) {
   const today = localDay(now);
   return Object.values(data.limits).flatMap((limit) => {
-    if (limit.appId !== previousEntry.id) return [];
     const { from, key } = limitPeriodRange(limit.period, now);
-    if (day < from || day > today) return [];
     const domain = normalizeSiteDomain(limit.siteDomain);
     if (limit.siteDomain && !domain) return [];
-    const previousSeconds = domain
-      ? getOwn(previousEntry.sites, domain)?.seconds || 0
-      : previousEntry.seconds;
-    const nextSeconds = domain
-      ? getOwn(nextEntry?.sites, domain)?.seconds || 0
-      : nextEntry?.seconds || 0;
-    if (nextSeconds >= previousSeconds) return [];
+    const removedSeconds = changes.reduce(
+      (removed, { day, previousEntry, nextEntry }) => {
+        if (limit.appId !== previousEntry.id || day < from || day > today)
+          return removed;
+        const previousSeconds = domain
+          ? getOwn(previousEntry.sites, domain)?.seconds || 0
+          : previousEntry.seconds;
+        const nextSeconds = domain
+          ? getOwn(nextEntry?.sites, domain)?.seconds || 0
+          : nextEntry?.seconds || 0;
+        return removed + previousSeconds - nextSeconds;
+      },
+      0,
+    );
+    if (removedSeconds <= 0) return [];
+    // Evaluate a batch against its final period total, not each day in isolation.
     const usage = Math.max(
       0,
-      getCurrentLimitUsage(data, limit, now) - previousSeconds + nextSeconds,
+      getCurrentLimitUsage(data, limit, now) - removedSeconds,
     );
     const resetWarning =
       limit.lastWarningDate === key &&
@@ -212,6 +254,8 @@ module.exports = {
   activityDaySummary,
   getActivityDays,
   getActivityForMutation,
+  getSiteUsageDeletion,
   rearmActivityLimits,
+  rearmChangedActivityLimits,
   scaleActivityEntry,
 };

@@ -390,6 +390,8 @@ export function Activity({
                       <div role="cell" className="ml-[52px] max-w-[430px]">
                         <SiteUsagePanel
                           app={app}
+                          days={data.days}
+                          onActivityChanged={onActivityChanged}
                           websiteTrackingEnabled={
                             data.settings.websiteTrackingEnabled
                           }

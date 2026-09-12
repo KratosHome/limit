@@ -25,6 +25,7 @@ import type { AppUsage, DashboardData } from '../types/usage';
 interface OverviewProps {
   data: DashboardData;
   onOpenActivity: () => void;
+  onActivityChanged: () => Promise<void>;
   onOpenLimits: () => void;
   onOpenSettings: () => void;
   onEditLimit: (limit?: AppLimit) => void;
@@ -75,11 +76,15 @@ function StatCard({
 
 function TopAppRow({
   app,
+  days,
+  onActivityChanged,
   onOpenSettings,
   totalSeconds,
   websiteTrackingEnabled,
 }: {
   app: AppUsage;
+  days: string[];
+  onActivityChanged: () => Promise<void>;
   onOpenSettings: () => void;
   totalSeconds: number;
   websiteTrackingEnabled: boolean;
@@ -146,6 +151,8 @@ function TopAppRow({
         <div id={sitesPanelId} hidden={!expanded}>
           <SiteUsagePanel
             app={app}
+            days={days}
+            onActivityChanged={onActivityChanged}
             websiteTrackingEnabled={websiteTrackingEnabled}
             onOpenSettings={onOpenSettings}
             className="mb-2 ml-14 mr-3"
@@ -159,6 +166,7 @@ function TopAppRow({
 export function Overview({
   data,
   onOpenActivity,
+  onActivityChanged,
   onOpenLimits,
   onOpenSettings,
   onEditLimit,
@@ -265,6 +273,8 @@ export function Overview({
               <TopAppRow
                 key={app.id}
                 app={app}
+                days={data.days}
+                onActivityChanged={onActivityChanged}
                 totalSeconds={data.totalSeconds}
                 websiteTrackingEnabled={data.settings.websiteTrackingEnabled}
                 onOpenSettings={onOpenSettings}

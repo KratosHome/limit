@@ -24,6 +24,7 @@ const {
 const {
   deleteActivity: deleteActivityRecord,
   deleteLimit: deleteLimitRecord,
+  deleteSiteUsage: deleteSiteUsageRecords,
   writeLimit,
   writeNotificationDate,
   writePausedDate,
@@ -36,7 +37,9 @@ const {
   activityDaySummary,
   getActivityDays,
   getActivityForMutation,
+  getSiteUsageDeletion,
   rearmActivityLimits,
+  rearmChangedActivityLimits,
   scaleActivityEntry,
 } = require('./store/activity-edits.cjs');
 const {
@@ -207,6 +210,30 @@ class UsageStore {
     const day = this.data.usageByDay[input.day];
     delete day[input.appId];
     if (!Object.keys(day).length) delete this.data.usageByDay[input.day];
+    for (const limit of rearmedLimits) this.data.limits[limit.id] = limit;
+    this.knownAppsCache = null;
+    return true;
+  }
+
+  deleteSiteUsage(input, now = new Date()) {
+    const { appId, domain, range, changes } = getSiteUsageDeletion(
+      this.data,
+      input,
+    );
+    if (!changes.length) return false;
+    const rearmedLimits = rearmChangedActivityLimits(this.data, changes, now);
+    this.transaction(() => {
+      deleteSiteUsageRecords(this.database, appId, domain, range);
+      writeActivityLimitNotifications(this.database, rearmedLimits);
+    });
+    for (const { day, nextEntry } of changes) {
+      Object.defineProperty(this.data.usageByDay[day], appId, {
+        configurable: true,
+        enumerable: true,
+        value: nextEntry,
+        writable: true,
+      });
+    }
     for (const limit of rearmedLimits) this.data.limits[limit.id] = limit;
     this.knownAppsCache = null;
     return true;

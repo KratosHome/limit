@@ -64,5 +64,22 @@ export default {
       'No domain received yet. Check macOS permissions and open a tab in {{app}}.',
     disabled: 'Website tracking is currently disabled.',
     openSettings: 'Open settings',
+    showLess: 'Show fewer',
+    delete: 'Delete {{domain}} from statistics',
+    deleteTitle: 'Delete website records?',
+    deleteDescription:
+      'This will permanently delete this website’s records for the selected period.',
+    deleteBrowser: 'Browser',
+    deletePeriod: 'Selected period',
+    deleteRetention:
+      'The browser’s total time will stay the same. Future visits to this website will still be tracked.',
+    deleting: 'Deleting…',
+    refreshing: 'Refreshing…',
+    deleteFailed: 'Could not delete these records. Please try again.',
+    deleteRefreshFailed:
+      'Records were deleted, but the statistics could not be refreshed. Try refreshing again.',
+    deleteRefresh: 'Refresh statistics',
+    deleted: 'Records for {{domain}} deleted.',
+    emptyAfterDelete: 'New website visits will appear here.',
   },
 } as const;

@@ -7,6 +7,7 @@ import type {
   ActivityDelete,
   ActivityUpdate,
   DashboardData,
+  SiteUsageDelete,
 } from './usage';
 import type { AppUpdateState } from './updates';
 
@@ -16,6 +17,7 @@ export interface LimitApi {
   getActivityDays(appId: string, range: DateRange): Promise<ActivityDay[]>;
   updateActivity(input: ActivityUpdate): Promise<ActivityDay>;
   deleteActivity(input: ActivityDelete): Promise<boolean>;
+  deleteSiteUsage(input: SiteUsageDelete): Promise<boolean>;
   openTrackingWidget(): Promise<boolean>;
   setTrackingEnabled(enabled: boolean): Promise<Settings>;
   updateSettings(patch: Partial<Settings>): Promise<Settings>;

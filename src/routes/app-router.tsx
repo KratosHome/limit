@@ -81,6 +81,7 @@ export function AppRouter({
   return (
     <Overview
       data={data}
+      onActivityChanged={onActivityChanged}
       onOpenActivity={onOpenActivity}
       onOpenLimits={onOpenLimits}
       onOpenSettings={onOpenSettings}

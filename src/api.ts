@@ -13,6 +13,7 @@ const unavailableElectronApi: LimitApi = {
   getActivityDays: missingElectronApi,
   updateActivity: missingElectronApi,
   deleteActivity: missingElectronApi,
+  deleteSiteUsage: missingElectronApi,
   openTrackingWidget: missingElectronApi,
   setTrackingEnabled: missingElectronApi,
   updateSettings: missingElectronApi,

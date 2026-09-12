@@ -1,10 +1,17 @@
 import type { AppLimit, LimitPeriod } from './limits';
+import type { DateRange } from './navigation';
 import type { NotificationPermission, Settings } from './settings';
 import type { TrackerStatus } from './tracker';
 
 export interface SiteUsage {
   domain: string;
   seconds: number;
+}
+
+export interface SiteUsageDelete {
+  appId: string;
+  domain: string;
+  range: DateRange;
 }
 
 export interface ActivityDay {

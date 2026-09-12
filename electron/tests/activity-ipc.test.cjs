@@ -7,8 +7,14 @@ const vm = require('node:vm');
 const errors = require('../errors.cjs');
 const { UsageStore } = require('../store.cjs');
 
-const channels = ['activity:days', 'activity:update', 'activity:delete'];
+const channels = [
+  'activity:days',
+  'activity:update',
+  'activity:delete',
+  'activity:delete-site',
+];
 const appId = 'com.example.App';
+const domain = 'example.com';
 const day = '2026-09-09';
 const range = { from: day, to: day };
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -126,6 +132,10 @@ function mockStore() {
       calls.push(['delete', input]);
       return true;
     },
+    deleteSiteUsage: (input) => {
+      calls.push(['delete-site', input]);
+      return true;
+    },
     getLimits: () => [
       { id: 'app-limit', appId },
       { id: 'site-limit', appId, siteDomain: 'example.com' },
@@ -183,13 +193,27 @@ test('successful activity IPC forwards scoped arguments and refreshes only after
     ok: true,
     data: true,
   });
+  const siteInput = { appId, domain, range };
+  assert.deepEqual(h.handlers.get('activity:delete-site')(h.event, siteInput), {
+    ok: true,
+    data: true,
+  });
   assert.deepEqual(store.calls, [
     ['days', appId, range],
     ['update', input],
     ['delete', input],
+    ['delete-site', siteInput],
   ]);
-  assert.deepEqual(h.sideEffects, ['reset', 'widget', 'reset', 'widget']);
+  assert.deepEqual(h.sideEffects, [
+    'reset',
+    'widget',
+    'reset',
+    'widget',
+    'reset',
+    'widget',
+  ]);
   assert.deepEqual(h.messages, [
+    ['data:updated', { reason: 'activity-edit' }],
     ['data:updated', { reason: 'activity-edit' }],
     ['data:updated', { reason: 'activity-edit' }],
   ]);
@@ -227,6 +251,18 @@ test('activity IPC returns safe validation/conflict/storage errors without succe
       new Error('SQL write to /private/user/database failed'),
       'storageSave',
     ],
+    [
+      'deleteSiteUsage',
+      'activity:delete-site',
+      new errors.AppError(errors.ERROR_CODES.INVALID_ACTIVITY),
+      'invalidActivity',
+    ],
+    [
+      'deleteSiteUsage',
+      'activity:delete-site',
+      new Error('SQL delete from /private/user/database failed'),
+      'storageSave',
+    ],
   ]) {
     const store = mockStore();
     store[method] = () => {
@@ -246,6 +282,17 @@ test('activity IPC returns safe validation/conflict/storage errors without succe
       limits: [],
     });
   }
+});
+
+test('deleting missing site usage returns false without becoming an IPC error', () => {
+  const store = mockStore();
+  store.deleteSiteUsage = () => false;
+  const h = mainHarness(store);
+  assert.deepEqual(
+    h.handlers.get('activity:delete-site')(h.event, { appId, domain, range }),
+    { ok: true, data: false },
+  );
+  assert.deepEqual(h.sideEffects, ['reset', 'widget']);
 });
 
 test('post-commit renderer/widget failures cannot report an already-saved activity change as failed', (t) => {
@@ -307,6 +354,50 @@ function preloadHarness(file, invoke) {
   return exposed;
 }
 
+test('site deletion passes through preload and trusted IPC without deleting browser time or other site history', async (t) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), 'limit-site-ipc-test-'),
+  );
+  const store = new UsageStore(path.join(directory, 'usage.sqlite3'));
+  t.after(() => {
+    store.close();
+    fs.rmSync(directory, { force: true, recursive: true });
+  });
+  store.updateSettings({ websiteTrackingEnabled: true });
+  for (const [id, siteDomain, seconds, date] of [
+    [appId, domain, 100, new Date(2026, 8, 9, 10)],
+    [appId, 'other.example', 40, new Date(2026, 8, 9, 11)],
+    [appId, domain, 90, new Date(2026, 8, 8, 10)],
+    ['other', domain, 30, new Date(2026, 8, 9, 10)],
+  ]) {
+    store.recordSample(
+      { id, name: 'Example Browser', site: { domain: siteDomain } },
+      seconds,
+      true,
+      date,
+    );
+  }
+  const browserBefore = plain(store.data.usageByDay[day][appId]);
+  const h = mainHarness(store);
+  const api = preloadHarness('preload.cjs', (channel, input) =>
+    Promise.resolve(h.handlers.get(channel)(h.event, input)),
+  ).get('limitApi');
+
+  assert.equal(await api.deleteSiteUsage({ appId, domain, range }), true);
+
+  const browserAfter = plain(store.data.usageByDay[day][appId]);
+  delete browserBefore.sites[domain];
+  assert.deepEqual(browserAfter, browserBefore);
+  assert.equal(
+    store.data.usageByDay['2026-09-08'][appId].sites[domain].seconds,
+    90,
+  );
+  assert.equal(store.data.usageByDay[day].other.sites[domain].seconds, 30);
+  assert.deepEqual(h.sideEffects, ['reset', 'widget']);
+  assert.deepEqual(h.messages, [['data:updated', { reason: 'activity-edit' }]]);
+  assert.equal(await api.deleteSiteUsage({ appId, domain, range }), false);
+});
+
 test('main preload forwards activity arguments, unwraps data and retains known safe error codes', async () => {
   const invocations = [];
   let response = { ok: true, data: [{ day, appId, seconds: 60 }] };
@@ -320,10 +411,13 @@ test('main preload forwards activity arguments, unwraps data and retains known s
   assert.deepEqual(await api.updateActivity(input), response.data);
   response = { ok: true, data: true };
   assert.equal(await api.deleteActivity(input), true);
+  const siteInput = { appId, domain, range };
+  assert.equal(await api.deleteSiteUsage(siteInput), true);
   assert.deepEqual(invocations, [
     ['activity:days', appId, range],
     ['activity:update', input],
     ['activity:delete', input],
+    ['activity:delete-site', siteInput],
   ]);
   for (const code of [
     'invalidActivity',
@@ -333,6 +427,7 @@ test('main preload forwards activity arguments, unwraps data and retains known s
   ]) {
     response = { ok: false, error: { code } };
     await assert.rejects(api.updateActivity(input), { message: code });
+    await assert.rejects(api.deleteSiteUsage(siteInput), { message: code });
   }
 });
 
@@ -346,6 +441,7 @@ test('widget preload exposes no main activity API or editing actions', () => {
     'getActivityDays',
     'updateActivity',
     'deleteActivity',
+    'deleteSiteUsage',
   ]) {
     assert.equal(widgetApi[method], undefined);
   }

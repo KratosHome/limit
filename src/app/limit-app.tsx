@@ -71,7 +71,9 @@ export function LimitApp() {
               app.setModal(limit ? { existing: limit } : {})
             }
             onOpenActivity={() => app.setView('activity')}
-            onActivityChanged={() => app.loadDashboard()}
+            onActivityChanged={() =>
+              app.loadDashboard(false, { throwOnError: true })
+            }
             onOpenLimits={() => app.setView('limits')}
             onOpenPermissions={(kind) => limitApi.openPermissions(kind)}
             onOpenSettings={() => app.setView('settings')}

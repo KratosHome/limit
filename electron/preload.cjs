@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('limitApi', {
     activityRequest('activity:days', appId, range),
   updateActivity: (input) => activityRequest('activity:update', input),
   deleteActivity: (input) => activityRequest('activity:delete', input),
+  deleteSiteUsage: (input) => activityRequest('activity:delete-site', input),
   openTrackingWidget: () => ipcRenderer.invoke('tracker:open-widget'),
   setTrackingEnabled: (enabled) =>
     ipcRenderer.invoke('tracker:set-enabled', enabled),

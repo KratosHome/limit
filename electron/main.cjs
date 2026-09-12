@@ -1356,6 +1356,13 @@ function registerIpc() {
       return result;
     }),
   );
+  handleIpc('activity:delete-site', (input) =>
+    activityResult(() => {
+      const result = store.deleteSiteUsage(input);
+      activityChanged(input.appId);
+      return result;
+    }),
+  );
   handleIpc('updates:get-state', getAppUpdateState);
   handleIpc('updates:check', () => appUpdater?.checkForUpdates() ?? false);
   handleIpc('updates:download', downloadAppUpdate);
