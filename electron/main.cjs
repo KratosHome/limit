@@ -34,7 +34,12 @@ const {
   limitMacNativeUpdate,
   limitSignedDevelopment,
 } = require('../package.json');
-const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
+const {
+  UsageStore,
+  addDays,
+  limitPeriodRange,
+  localDay,
+} = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { createTrackingWidget } = require('./tracking-widget.cjs');
 const { createTrayIcon } = require('./tray-icon.cjs');
@@ -1241,12 +1246,9 @@ function validateRange(range = {}) {
   if (to > today) to = today;
   if (from > today) from = today;
   if (from > to) [from, to] = [to, from];
-  const fromDate = new Date(`${from}T12:00:00`);
-  const toDate = new Date(`${to}T12:00:00`);
-  if ((toDate - fromDate) / 86_400_000 > 365) {
-    fromDate.setDate(toDate.getDate() - 365);
-    from = localDay(fromDate);
-  }
+  // Compare calendar days: a year spanning DST can exceed 365 * 24 hours.
+  const earliestFrom = addDays(to, -365);
+  if (from < earliestFrom) from = earliestFrom;
   return { from, to };
 }
 

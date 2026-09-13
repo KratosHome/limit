@@ -14,6 +14,10 @@ export default {
     local: 'Дані залишаються на пристрої',
   },
   periods: {
+    label: 'Період статистики',
+    chooseRange: 'Виберіть дати',
+    rangeHint: 'Оберіть початок і кінець періоду.',
+    apply: 'Застосувати',
     today: 'Сьогодні',
     yesterday: 'Вчора',
     sevenDays: '7 днів',

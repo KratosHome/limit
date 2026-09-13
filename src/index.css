@@ -1,6 +1,29 @@
 @import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #fff;
+  --color-accent: var(--nav-active);
+  --color-accent-foreground: var(--text);
+  --color-muted: var(--surface-hover);
+  --color-muted-foreground: var(--muted);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+}
+
+/* Keep the compact shadcn controls independent of the native form reset. */
+[data-slot='calendar'] button,
+[data-slot='toggle-group'] button {
+  font-size: 12px;
+  font-weight: 500;
+}
+
 :root {
   color-scheme: light;
   font-family:
@@ -173,17 +196,6 @@ select option {
 .field-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent), transparent 88%);
-}
-.select-compact {
-  min-width: 90px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
-  padding: 7px 10px;
-  color: var(--text);
-  font-size: 10px;
-  font-weight: 700;
-  outline: none;
 }
 .theme-choice {
   display: inline-flex;

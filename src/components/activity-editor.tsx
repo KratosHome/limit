@@ -8,6 +8,15 @@ import type { ActivityDay, AppUsage } from '../types/usage';
 import { AppIcon } from './app-icon';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
 
 interface ActivityEditorProps {
   app: AppUsage;
@@ -302,24 +311,33 @@ export function ActivityEditor({
                 <label htmlFor="activity-editor-day" className="field-label">
                   {t('editor.day')}
                 </label>
-                <select
-                  id="activity-editor-day"
-                  className="mt-2 h-10 w-full rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 text-[12px] font-semibold text-[var(--text)] outline-none focus:ring-2 focus:ring-[var(--accent)] disabled:opacity-50"
+                <Select
                   value={record.day}
                   disabled={disabled}
-                  onChange={(event) =>
-                    selectRecord(
-                      days.find((row) => row.day === event.target.value) ??
-                        null,
-                    )
+                  onValueChange={(day) =>
+                    selectRecord(days.find((row) => row.day === day) ?? null)
                   }
                 >
-                  {days.map((day) => (
-                    <option key={day.day} value={day.day}>
-                      {formatDay(day.day)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger
+                    id="activity-editor-day"
+                    size="compact"
+                    className="mt-2 h-10"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel className="sr-only">
+                        {t('editor.day')}
+                      </SelectLabel>
+                      {days.map((day) => (
+                        <SelectItem key={day.day} value={day.day}>
+                          {formatDay(day.day)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               </div>
               <fieldset
                 disabled={disabled}

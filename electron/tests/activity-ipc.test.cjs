@@ -5,7 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const errors = require('../errors.cjs');
-const { UsageStore } = require('../store.cjs');
+const { UsageStore, localDay, enumerateDays } = require('../store.cjs');
 
 const channels = [
   'activity:days',
@@ -19,7 +19,7 @@ const day = '2026-09-09';
 const range = { from: day, to: day };
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-function mainHarness(store) {
+function mainHarness(store, { today } = {}) {
   const handlers = new Map();
   const messages = [];
   const sideEffects = [];
@@ -43,6 +43,12 @@ function mainHarness(store) {
     require: (name) => {
       if (name === 'electron') return electron;
       if (name === './errors.cjs') return errors;
+      if (name === './store.cjs')
+        return {
+          ...require('../store.cjs'),
+          localDay: (date) =>
+            date === undefined && today ? today : localDay(date),
+        };
       if (name === './limit-notification-rules.cjs')
         return require('../limit-notification-rules.cjs');
       if (name.startsWith('node:')) return require(name);
@@ -55,6 +61,7 @@ function mainHarness(store) {
   const api = vm.runInContext(
     `${fs.readFileSync(path.join(__dirname, '../main.cjs'), 'utf8')}
     ;({
+      validateRange,
       setup(nextStore, nextTracker, window, widget) {
         store = nextStore;
         tracker = nextTracker;
@@ -104,9 +111,47 @@ function mainHarness(store) {
     sideEffects,
     loggedErrors,
     failures,
+    validateRange: (input) => plain(api.validateRange(input)),
     cacheState: () => plain(api.cacheState()),
   };
 }
+
+test('dashboard ranges preserve 365 calendar days across DST and clamp longer ranges from the end date', () => {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = 'Europe/Kyiv';
+  try {
+    const h = mainHarness(mockStore(), { today: '2026-10-25' });
+    const maximumRange = { from: '2025-10-25', to: '2026-10-25' };
+    assert.ok(
+      (new Date('2026-10-25T12:00:00') - new Date('2025-10-25T12:00:00')) /
+        86_400_000 >
+        365,
+      'the fixture spans the autumn DST change by an extra hour',
+    );
+    assert.deepEqual(h.validateRange(maximumRange), maximumRange);
+    for (const from of ['2025-10-24', '2024-12-01']) {
+      const clamped = h.validateRange({ from, to: maximumRange.to });
+      assert.deepEqual(clamped, maximumRange);
+      // Both endpoints are included, matching the existing today-minus-365 UI.
+      assert.equal(enumerateDays(clamped.from, clamped.to).length, 366);
+    }
+    assert.deepEqual(
+      h.validateRange({ from: '2023-01-01', to: '2024-03-01' }),
+      { from: '2023-03-02', to: '2024-03-01' },
+    );
+    assert.deepEqual(
+      h.validateRange({ from: '2026-10-25', to: '2025-10-25' }),
+      maximumRange,
+    );
+    assert.deepEqual(
+      h.validateRange({ from: '2026-10-25', to: '2026-10-25' }),
+      { from: '2026-10-25', to: '2026-10-25' },
+    );
+  } finally {
+    if (previousTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimezone;
+  }
+});
 
 function mockStore() {
   const calls = [];

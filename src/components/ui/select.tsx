@@ -29,12 +29,21 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
 export const SelectTrigger = forwardRef<
   ElementRef<typeof SelectPrimitive.Trigger>,
-  ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+  ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> & {
+    size?: 'default' | 'compact';
+  }
+>(({ className, children, size = 'default', style, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
+    data-size={size}
+    style={{
+      fontSize: size === 'compact' ? 11 : 12,
+      fontWeight: 600,
+      ...style,
+    }}
     className={cn(
-      'flex h-14 w-full items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-left text-[12px] font-semibold text-[var(--text)] shadow-[var(--shadow-xs)] outline-none transition focus:border-[color-mix(in_srgb,var(--accent),transparent_25%)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent),transparent_88%)] disabled:cursor-not-allowed disabled:opacity-60 [&>span]:min-w-0 [&>span]:flex-1 [&_svg]:size-4 [&_svg]:shrink-0',
+      'flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-left text-[var(--text)] shadow-[var(--shadow-xs)] outline-none transition focus:border-[color-mix(in_srgb,var(--accent),transparent_25%)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--accent),transparent_88%)] disabled:cursor-not-allowed disabled:opacity-60 [&>span]:min-w-0 [&>span]:flex-1 [&>span]:truncate [&_svg]:size-4 [&_svg]:shrink-0',
+      size === 'compact' ? 'h-9' : 'h-14',
       className,
     )}
     {...props}
@@ -50,29 +59,35 @@ SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
 export const SelectContent = forwardRef<
   ElementRef<typeof SelectPrimitive.Content>,
   ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = 'popper', ...props }, ref) => (
-  <SelectPrimitive.Portal>
-    <SelectPrimitive.Content
-      ref={ref}
-      position={position}
-      className={cn(
-        'z-50 max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[0_18px_50px_rgba(15,23,42,.18)]',
-        className,
-      )}
-      {...props}
-    >
-      <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center text-[var(--muted)]">
-        <ChevronUp aria-hidden="true" />
-      </SelectPrimitive.ScrollUpButton>
-      <SelectPrimitive.Viewport className="flex flex-col gap-0.5 p-1.5">
-        {children}
-      </SelectPrimitive.Viewport>
-      <SelectPrimitive.ScrollDownButton className="flex h-7 items-center justify-center text-[var(--muted)]">
-        <ChevronDown aria-hidden="true" />
-      </SelectPrimitive.ScrollDownButton>
-    </SelectPrimitive.Content>
-  </SelectPrimitive.Portal>
-));
+>(
+  (
+    { className, children, position = 'popper', sideOffset = 6, ...props },
+    ref,
+  ) => (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        ref={ref}
+        position={position}
+        sideOffset={sideOffset}
+        className={cn(
+          'z-50 max-h-[min(18rem,var(--radix-select-content-available-height,18rem))] min-w-[var(--radix-select-trigger-width,8rem)] max-w-[calc(100vw-20px)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[0_18px_50px_rgba(15,23,42,.18)]',
+          className,
+        )}
+        {...props}
+      >
+        <SelectPrimitive.ScrollUpButton className="flex h-7 items-center justify-center text-[var(--muted)] [&_svg]:size-4">
+          <ChevronUp aria-hidden="true" />
+        </SelectPrimitive.ScrollUpButton>
+        <SelectPrimitive.Viewport className="flex flex-col gap-0.5 p-1.5">
+          {children}
+        </SelectPrimitive.Viewport>
+        <SelectPrimitive.ScrollDownButton className="flex h-7 items-center justify-center text-[var(--muted)] [&_svg]:size-4">
+          <ChevronDown aria-hidden="true" />
+        </SelectPrimitive.ScrollDownButton>
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
+  ),
+);
 SelectContent.displayName = SelectPrimitive.Content.displayName;
 
 export const SelectItem = forwardRef<
@@ -82,7 +97,7 @@ export const SelectItem = forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex min-h-10 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-9 pr-3 text-[11px] font-semibold outline-none transition focus:bg-[var(--surface-hover)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
+      'relative flex min-h-9 cursor-default select-none items-center gap-2 rounded-lg py-2 pl-9 pr-3 text-[11px] font-semibold outline-none transition data-[highlighted]:bg-[var(--surface-hover)] data-[state=checked]:text-[var(--accent-strong)] data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0',
       className,
     )}
     {...props}

@@ -25,10 +25,10 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
             (point.seconds / max) * 100,
           );
           const label = isHourly
-            ? `${point.key}:00`
+            ? `${point.key.padStart(2, '0')}:00`
             : formatShortDate(point.key);
           const showLabel = isHourly
-            ? index % 2 === 0 || index === visible.length - 1
+            ? index % 2 === 0
             : visible.length <= 10 ||
               index % Math.ceil(visible.length / 8) === 0 ||
               index === visible.length - 1;
@@ -143,7 +143,7 @@ export function ActivityChart({ data, isHourly }: ActivityChartProps) {
         {visible
           .map(
             (point) =>
-              `${isHourly ? `${point.key}:00` : formatShortDate(point.key)} — ${formatDuration(point.seconds)}`,
+              `${isHourly ? `${point.key.padStart(2, '0')}:00` : formatShortDate(point.key)} — ${formatDuration(point.seconds)}`,
           )
           .join('; ')}
       </p>

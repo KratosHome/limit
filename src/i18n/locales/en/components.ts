@@ -14,6 +14,10 @@ export default {
     local: 'Your data stays on this device',
   },
   periods: {
+    label: 'Statistics period',
+    chooseRange: 'Choose dates',
+    rangeHint: 'Select the start and end of your period.',
+    apply: 'Apply',
     today: 'Today',
     yesterday: 'Yesterday',
     sevenDays: '7 days',

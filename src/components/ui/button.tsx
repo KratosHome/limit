@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import type { ComponentProps } from 'react';
 import { cn } from '../../lib/utils';
 
 type ButtonVariant =
@@ -14,7 +15,7 @@ type ButtonVariant =
   | 'subtle';
 type ButtonSize = 'default' | 'sm' | 'icon' | 'none';
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentProps<'button'> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   active?: boolean;
@@ -44,6 +45,13 @@ const sizes: Record<ButtonSize, string> = {
   icon: 'h-8 w-8',
   none: '',
 };
+
+export function buttonVariants({
+  variant = 'default',
+  size = 'default',
+}: Pick<ButtonProps, 'variant' | 'size'> = {}) {
+  return cn(variants[variant], sizes[size]);
+}
 
 export function Button({
   className,

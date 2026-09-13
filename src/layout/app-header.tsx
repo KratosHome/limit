@@ -1,18 +1,9 @@
-import {
-  CalendarRange,
-  Moon,
-  Pause,
-  PictureInPicture2,
-  Play,
-  Sun,
-} from 'lucide-react';
+import { Moon, Pause, PictureInPicture2, Play, Sun } from 'lucide-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PeriodPicker } from '../components/period-picker';
 import { LanguageSelect } from '../components/language-select';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { offsetDay, toDayKey } from '../lib/format';
 import type { DateRange, PeriodKey, ViewKey } from '../types/navigation';
 import type { AppLanguage } from '../i18n';
 
@@ -53,41 +44,12 @@ export function AppHeader({
   return (
     <header className="app-drag flex h-[68px] shrink-0 items-center justify-end gap-3 border-b border-[var(--border)] bg-[var(--background)] px-7">
       {hasPeriodPicker && (
-        <PeriodPicker value={period} onChange={onPeriodChange} />
-      )}
-      {period === 'custom' && hasPeriodPicker && (
-        <div className="no-drag flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 shadow-[var(--shadow-xs)]">
-          <CalendarRange size={14} className="text-[var(--muted)]" />
-          <Input
-            variant="date"
-            type="date"
-            aria-label={t('header.periodStart')}
-            value={customRange.from}
-            min={toDayKey(offsetDay(new Date(), -365))}
-            max={customRange.to}
-            onChange={(event) =>
-              onCustomRangeChange((value) => ({
-                ...value,
-                from: event.target.value,
-              }))
-            }
-          />
-          <span className="text-[var(--muted)]">-</span>
-          <Input
-            variant="date"
-            type="date"
-            aria-label={t('header.periodEnd')}
-            value={customRange.to}
-            min={customRange.from}
-            max={toDayKey(new Date())}
-            onChange={(event) =>
-              onCustomRangeChange((value) => ({
-                ...value,
-                to: event.target.value,
-              }))
-            }
-          />
-        </div>
+        <PeriodPicker
+          value={period}
+          customRange={customRange}
+          onChange={onPeriodChange}
+          onCustomRangeChange={onCustomRangeChange}
+        />
       )}
       <LanguageSelect compact value={language} onChange={onLanguageChange} />
       <div className="no-drag ml-1 flex items-center gap-2">

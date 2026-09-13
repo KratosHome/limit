@@ -14,6 +14,15 @@ import { ActivityEditor } from '../components/activity-editor';
 import { SiteUsagePanel } from '../components/site-usage-panel';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import { formatDuration } from '../lib/format';
 import { translateCategory } from '../i18n/helpers';
 import type { AppUsage, DashboardData } from '../types/usage';
@@ -158,22 +167,29 @@ export function Activity({
             aria-label={t('searchLabel')}
           />
         </label>
-        <label className="input-shell flex items-center gap-2">
-          <SlidersHorizontal size={15} className="text-[var(--muted)]" />
-          <select
+        <Select value={category} onValueChange={setCategory}>
+          <SelectTrigger
+            size="compact"
+            className="h-[42px]"
             aria-label={t('categoryLabel')}
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="w-full bg-transparent text-[12px] font-semibold outline-none"
           >
-            <option value="__all__">{t('allCategories')}</option>
-            {categories.map((item) => (
-              <option key={item} value={item}>
-                {translateCategory(item)}
-              </option>
-            ))}
-          </select>
-        </label>
+            <SlidersHorizontal aria-hidden="true" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectLabel className="sr-only">
+                {t('categoryLabel')}
+              </SelectLabel>
+              <SelectItem value="__all__">{t('allCategories')}</SelectItem>
+              {categories.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {translateCategory(item)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
         <div className="input-shell flex items-center gap-2 px-4 text-[11px] font-semibold text-[var(--muted-strong)]">
           <CalendarDays size={15} /> {t('days', { count: data.days.length })}
         </div>
