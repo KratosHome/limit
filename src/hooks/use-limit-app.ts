@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { limitApi } from '../api';
 import { offsetDay, rangeForPeriod, toDayKey } from '../lib/format';
 import i18n, { normalizeLanguage, type AppLanguage } from '../i18n';
@@ -46,21 +46,26 @@ export function useLimitApp() {
   const [trackingError, setTrackingError] = useState('');
   const trackingRequest = useRef(false);
   const dashboardRequestId = useRef(0);
-  const range = useMemo(
-    () => rangeForPeriod(period, customRange),
-    [customRange, period],
-  );
-  const rangeRef = useRef(range);
-  rangeRef.current = range;
+  const rangeSelection = useRef({ period, customRange });
+  rangeSelection.current = { period, customRange };
 
   const loadDashboard = useCallback(
     async (showLoader = false, options: { throwOnError?: boolean } = {}) => {
-      const requestedRange = rangeRef.current;
+      const currentRange = () =>
+        rangeForPeriod(
+          rangeSelection.current.period,
+          rangeSelection.current.customRange,
+        );
+      const requestedRange = currentRange();
       const requestId = ++dashboardRequestId.current;
-      const isCurrentRequest = () =>
-        requestId === dashboardRequestId.current &&
-        requestedRange.from === rangeRef.current.from &&
-        requestedRange.to === rangeRef.current.to;
+      const isCurrentRequest = () => {
+        const range = currentRange();
+        return (
+          requestId === dashboardRequestId.current &&
+          requestedRange.from === range.from &&
+          requestedRange.to === range.to
+        );
+      };
       if (showLoader) setLoading(true);
       try {
         const next = await limitApi.getDashboard(requestedRange);
@@ -110,7 +115,27 @@ export function useLimitApp() {
 
   useEffect(() => {
     void loadDashboard(true);
-  }, [loadDashboard, range]);
+  }, [loadDashboard, customRange, period]);
+  useEffect(() => {
+    let day = toDayKey(new Date());
+    const refreshOnFocus = () => {
+      day = toDayKey(new Date());
+      void loadDashboard();
+    };
+    // Tracking can be paused at midnight, so data events alone cannot keep
+    // relative periods current. Focus also covers suspended background timers.
+    const timer = window.setInterval(() => {
+      const currentDay = toDayKey(new Date());
+      if (currentDay === day) return;
+      day = currentDay;
+      void loadDashboard();
+    }, 30_000);
+    window.addEventListener('focus', refreshOnFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshOnFocus);
+    };
+  }, [loadDashboard]);
   useEffect(() => {
     const unsubscribeData = limitApi.onDataUpdated(() => void loadDashboard());
     const unsubscribeNotifications = limitApi.onLimitNotification(

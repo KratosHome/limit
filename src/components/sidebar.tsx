@@ -1,4 +1,12 @@
-import { BarChart3, Clock3, Gauge, Settings2 } from 'lucide-react';
+import {
+  BarChart3,
+  Clock3,
+  Gauge,
+  LoaderCircle,
+  Pause,
+  Play,
+  Settings2,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ViewKey } from '../types/navigation';
 import { Button } from './ui/button';
@@ -21,7 +29,9 @@ const navigation: Array<{
 interface SidebarProps {
   view: ViewKey;
   onChange: (view: ViewKey) => void;
-  trackingEnabled: boolean;
+  trackingEnabled?: boolean;
+  trackingPending: boolean;
+  onTrackingToggle: () => void;
   currentApp?: string | null;
 }
 
@@ -29,6 +39,8 @@ export function Sidebar({
   view,
   onChange,
   trackingEnabled,
+  trackingPending,
+  onTrackingToggle,
   currentApp,
 }: SidebarProps) {
   const { t } = useTranslation('components');
@@ -63,10 +75,13 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="mt-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5">
-        <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)]">
+      <div className="mt-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3.5 text-[12px] font-medium">
+        <div
+          role="status"
+          className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-[var(--text)]"
+        >
           <span
-            className={`relative flex h-2.5 w-2.5 ${trackingEnabled ? '' : 'opacity-60'}`}
+            className={`relative flex h-2.5 w-2.5 shrink-0 ${trackingEnabled ? '' : 'opacity-60'}`}
           >
             {trackingEnabled && (
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
@@ -75,13 +90,45 @@ export function Sidebar({
               className={`relative inline-flex h-2.5 w-2.5 rounded-full ${trackingEnabled ? 'bg-emerald-500' : 'bg-slate-400'}`}
             />
           </span>
-          {t(trackingEnabled ? 'sidebar.active' : 'sidebar.paused')}
+          {t(
+            trackingEnabled === undefined
+              ? 'tracking.loading'
+              : trackingEnabled
+                ? 'sidebar.active'
+                : 'sidebar.paused',
+          )}
         </div>
         <p className="truncate text-[11px] leading-4 text-[var(--muted)]">
           {trackingEnabled && currentApp
             ? t('sidebar.current', { app: currentApp })
             : t('sidebar.local')}
         </p>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-3 w-full gap-2"
+          onClick={onTrackingToggle}
+          disabled={trackingPending || trackingEnabled === undefined}
+          aria-busy={trackingPending}
+          aria-label={t(
+            trackingEnabled === false
+              ? 'header.resumeTracking'
+              : 'header.pauseTracking',
+          )}
+        >
+          {trackingPending ? (
+            <LoaderCircle
+              size={13}
+              className="motion-safe:animate-spin"
+              aria-hidden="true"
+            />
+          ) : trackingEnabled === false ? (
+            <Play size={13} aria-hidden="true" />
+          ) : (
+            <Pause size={13} aria-hidden="true" />
+          )}
+          {t(trackingEnabled === false ? 'tracking.resume' : 'tracking.pause')}
+        </Button>
       </div>
     </aside>
   );

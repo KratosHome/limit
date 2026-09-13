@@ -91,13 +91,13 @@ function createTrackingWidget({
     if (!menuBar) {
       return {
         width: 340,
-        height: 180,
+        height: 104,
         x: Math.max(workArea.x, workArea.x + workArea.width - 360),
-        y: Math.max(workArea.y, workArea.y + workArea.height - 200),
+        y: Math.max(workArea.y, workArea.y + workArea.height - 124),
       };
     }
     const width = Math.min(340, Math.max(1, workArea.width - 16));
-    const height = Math.min(180, Math.max(1, workArea.height - 14));
+    const height = Math.min(104, Math.max(1, workArea.height - 14));
     const x = anchor
       ? anchor.x + anchor.width / 2 - width / 2
       : workArea.x + workArea.width - width - 20;

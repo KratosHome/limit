@@ -4,18 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../components/ui/button';
 import type { TrackingWidgetState } from '../types/tracking-widget';
 
-function elapsedPause(startedAt: number | null, now: number) {
-  const seconds = Math.max(0, Math.floor((now - (startedAt ?? now)) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 export function TrackingWidget() {
   const { t, i18n } = useTranslation('components');
   const [state, setState] = useState<TrackingWidgetState | null>(null);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [now, setNow] = useState(Date.now);
+  const [loadFailed, setLoadFailed] = useState(false);
   const api = window.trackingWidgetApi;
 
   useEffect(() => {
@@ -32,13 +26,14 @@ export function TrackingWidget() {
       if (!active) return;
       receivedEvent = true;
       setState(next);
+      setLoadFailed(false);
     });
     void api?.getState().then(
       (next) => {
         if (active && !receivedEvent) setState(next);
       },
       () => {
-        if (active) setFailed(true);
+        if (active && !receivedEvent) setLoadFailed(true);
       },
     );
     return () => {
@@ -52,12 +47,6 @@ export function TrackingWidget() {
     if (state?.language && state.language !== i18n.resolvedLanguage)
       void i18n.changeLanguage(state.language);
   }, [state?.language, i18n]);
-
-  useEffect(() => {
-    if (!state?.pauseStartedAt || state.trackingEnabled) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [state?.pauseStartedAt, state?.trackingEnabled]);
 
   useEffect(() => {
     if (state?.presentation !== 'menu-bar' || !api) return;
@@ -99,68 +88,59 @@ export function TrackingWidget() {
   const paused = state && !state.trackingEnabled;
   const locked = state?.activityState === 'locked';
   const menuBar = state?.presentation === 'menu-bar';
-  const detail =
-    failed && state
+  const hasError = failed || loadFailed || !api;
+  const status = !state
+    ? t(hasError ? 'tracking.loadFailed' : 'tracking.loading')
+    : failed
       ? t('tracking.failed')
       : paused
-        ? state.pauseStartedAt
-          ? t('tracking.elapsed', {
-              time: elapsedPause(state.pauseStartedAt, now),
-            })
-          : t('tracking.pausedDetail')
+        ? t('tracking.paused')
         : locked
-          ? t('tracking.lockedDetail')
-          : state?.currentApp
-            ? t('tracking.current', { app: state.currentApp })
-            : t('tracking.ready');
+          ? t('tracking.locked')
+          : state.currentApp || t('tracking.active');
+  const statusLabel =
+    state?.currentApp && !paused && !locked && !failed
+      ? t('tracking.current', { app: state.currentApp })
+      : status;
   return (
-    <main className="flex h-screen flex-col gap-3 overflow-hidden border border-[var(--border)] bg-[var(--surface)] p-3.5 text-[12px] text-[var(--text)]">
+    <main className="flex h-screen flex-col justify-between gap-3 overflow-hidden border border-[var(--border)] bg-[var(--surface)] p-3.5 text-[12px] text-[var(--text)]">
       <div
         className={`flex shrink-0 items-center justify-between gap-2 ${menuBar ? '' : 'app-drag'}`}
       >
-        <div className="flex items-center gap-2 text-[11px] font-bold">
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-[11px]">
           <span
-            className={`size-2 rounded-full ${paused || locked ? 'bg-amber-500' : 'bg-emerald-500'}`}
+            className={`size-2 shrink-0 rounded-full ${hasError ? 'bg-rose-500' : paused || locked ? 'bg-amber-500' : state ? 'bg-emerald-500' : 'bg-slate-400'}`}
+            aria-hidden="true"
           />
-          Limit
+          <span className="shrink-0 font-bold">Limit</span>
+          <span className="text-[var(--muted)]" aria-hidden="true">
+            ·
+          </span>
+          <span
+            className={`min-w-0 truncate font-medium ${hasError ? 'text-rose-500' : 'text-[var(--muted-strong)]'}`}
+            role="status"
+            aria-label={statusLabel}
+            title={statusLabel}
+          >
+            {status}
+          </span>
         </div>
         {!menuBar && (
           <GripHorizontal
             size={15}
-            className="text-[var(--muted)]"
+            className="shrink-0 text-[var(--muted)]"
             aria-hidden="true"
           />
         )}
         <Button
           variant="icon"
           size="none"
-          className="size-6"
+          className="size-6 shrink-0"
           aria-label={t('tracking.closeWidget')}
           onClick={() => void windowAction('close')}
         >
           <X size={13} aria-hidden="true" />
         </Button>
-      </div>
-      <div className="min-h-0 min-w-0 flex-1" role="status">
-        <p className="text-[14px] font-bold leading-5">
-          {!state
-            ? t(failed || !api ? 'tracking.loadFailed' : 'tracking.loading')
-            : t(
-                paused
-                  ? 'tracking.paused'
-                  : locked
-                    ? 'tracking.locked'
-                    : 'tracking.active',
-              )}
-        </p>
-        {state && (
-          <p
-            className="mt-1 line-clamp-2 break-words text-[10px] leading-4 text-[var(--muted)]"
-            title={detail}
-          >
-            {detail}
-          </p>
-        )}
       </div>
       <div className="no-drag flex shrink-0 items-center gap-2">
         <Button

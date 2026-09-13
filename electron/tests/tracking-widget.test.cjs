@@ -193,7 +193,7 @@ test('the Mac widget is an isolated menu-bar panel anchored to the tray and reus
   assert.equal(window.config.type, 'panel');
   assert.equal(window.config.movable, false);
   assert.equal(window.config.width, 340);
-  assert.equal(window.config.height, 180);
+  assert.equal(window.config.height, 104);
   assert.equal(window.config.x, 2342);
   assert.equal(window.config.y, 106);
   assert.deepEqual(h.display.matched[0], h.display.anchor);
@@ -233,7 +233,7 @@ test('Mac reopening follows tray moves and clamps the panel inside its display',
   };
   h.display.anchor = { x: -24, y: 0, width: 24, height: 24 };
   h.widget.show();
-  assert.deepEqual(window.bounds, { x: -348, y: 30, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: -348, y: 30, width: 340, height: 104 });
   assert.equal(h.windows.length, 1);
   assert.deepEqual(h.display.matched.at(-1), h.display.anchor);
   h.widget.hide();
@@ -241,9 +241,9 @@ test('Mac reopening follows tray moves and clamps the panel inside its display',
   h.widget.show();
   assert.deepEqual(window.bounds, {
     x: -1912,
-    y: 892,
+    y: 968,
     width: 340,
-    height: 180,
+    height: 104,
   });
 });
 
@@ -256,7 +256,7 @@ for (const anchor of [null, { x: 0, y: 0, width: 0, height: 0 }]) {
       x: 3000,
       y: 106,
       width: 340,
-      height: 180,
+      height: 104,
     });
     assert.deepEqual(h.display.nearestPoints[0], h.display.cursor);
     assert.equal(h.display.matched.length, 0);
@@ -275,7 +275,7 @@ test('Mac startup ignores tray bounds below the display until a real anchor is a
   h.display.anchor = { x: 0, y: 1440, width: 34, height: 0 };
   h.widget.show();
   const window = h.windows[0];
-  const fallback = { x: 3080, y: 36, width: 340, height: 180 };
+  const fallback = { x: 3080, y: 36, width: 340, height: 104 };
   assert.deepEqual(window.bounds, fallback);
 
   h.display.anchor = { x: 0, y: 1440, width: 34, height: 30 };
@@ -287,7 +287,7 @@ test('Mac startup ignores tray bounds below the display until a real anchor is a
   h.widget.hide();
   h.display.anchor = { x: 2875, y: 0, width: 34, height: 30 };
   h.widget.show();
-  assert.deepEqual(window.bounds, { x: 2722, y: 36, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: 2722, y: 36, width: 340, height: 104 });
   assert.equal(h.windows.length, 1);
 });
 
@@ -303,7 +303,7 @@ test('Mac keeps the last on-display tray anchor through transient invalid bounds
   h.widget.show();
   const window = h.windows[0];
   window.emit('ready-to-show');
-  const anchored = { x: 2722, y: 36, width: 340, height: 180 };
+  const anchored = { x: 2722, y: 36, width: 340, height: 104 };
   assert.deepEqual(window.bounds, anchored);
 
   for (const transient of [
@@ -332,7 +332,7 @@ test('Mac falls back when the cached tray anchor belongs to a disconnected displ
   h.widget.show();
   const window = h.windows[0];
   window.emit('ready-to-show');
-  assert.deepEqual(window.bounds, { x: 2342, y: 106, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: 2342, y: 106, width: 340, height: 104 });
 
   h.widget.hide();
   const remainingDisplay = {
@@ -344,25 +344,25 @@ test('Mac falls back when the cached tray anchor belongs to a disconnected displ
   h.display.cursor = { x: 1700, y: 12 };
   h.display.anchor = null;
   h.widget.show();
-  assert.deepEqual(window.bounds, { x: 1560, y: 30, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: 1560, y: 30, width: 340, height: 104 });
   assert.deepEqual(h.display.nearestPoints.at(-1), h.display.cursor);
 
   h.widget.hide();
   h.display.anchor = { x: 1400, y: 0, width: 24, height: 24 };
   h.widget.show();
-  assert.deepEqual(window.bounds, { x: 1242, y: 30, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: 1242, y: 30, width: 340, height: 104 });
   assert.equal(h.windows.length, 1);
 });
 
 test('a physically small Mac display bounds both panel dimensions and margins', () => {
   const h = createHarness({ getAnchorBounds: () => null });
-  h.display.nearest = { workArea: { x: 100, y: 50, width: 200, height: 120 } };
+  h.display.nearest = { workArea: { x: 100, y: 50, width: 200, height: 90 } };
   h.widget.show();
   assert.deepEqual(h.windows[0].bounds, {
     x: 108,
     y: 56,
     width: 184,
-    height: 106,
+    height: 76,
   });
 });
 
@@ -372,7 +372,7 @@ test('Windows keeps the inactive floating bottom-right window and close destroys
   const window = h.windows[0];
   assert.equal(window.config.type, undefined);
   assert.notEqual(window.config.movable, false);
-  assert.deepEqual(window.bounds, { x: 3000, y: 800, width: 340, height: 180 });
+  assert.deepEqual(window.bounds, { x: 3000, y: 876, width: 340, height: 104 });
   window.emit('ready-to-show');
   assert.equal(window.showInactiveCount, 1);
   assert.equal(window.showCount, 0);

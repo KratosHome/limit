@@ -19,7 +19,9 @@ export function LimitApp() {
         <Sidebar
           view={app.view}
           onChange={app.setView}
-          trackingEnabled={app.data?.settings.trackingEnabled ?? true}
+          trackingEnabled={app.data?.settings.trackingEnabled}
+          trackingPending={app.trackingPending}
+          onTrackingToggle={app.toggleTracking}
           currentApp={app.data?.tracker.currentApp?.name}
         />
       }
