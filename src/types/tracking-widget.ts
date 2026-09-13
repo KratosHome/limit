@@ -2,6 +2,7 @@ import type { AppLanguage } from '../i18n';
 import type { TrackerStatus } from './tracker';
 
 export interface TrackingWidgetState {
+  presentation?: 'menu-bar' | 'floating';
   trackingEnabled: boolean;
   activityState: TrackerStatus['activityState'];
   pauseStartedAt: number | null;

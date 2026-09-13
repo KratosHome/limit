@@ -59,6 +59,22 @@ export function TrackingWidget() {
     return () => window.clearInterval(timer);
   }, [state?.pauseStartedAt, state?.trackingEnabled]);
 
+  useEffect(() => {
+    if (state?.presentation !== 'menu-bar' || !api) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      void api!.close().then(
+        (closed) => {
+          if (!closed) setFailed(true);
+        },
+        () => setFailed(true),
+      );
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [api, state?.presentation]);
+
   async function toggleTracking() {
     if (!api || !state || pending) return;
     setPending(true);
@@ -82,20 +98,39 @@ export function TrackingWidget() {
 
   const paused = state && !state.trackingEnabled;
   const locked = state?.activityState === 'locked';
+  const menuBar = state?.presentation === 'menu-bar';
+  const detail =
+    failed && state
+      ? t('tracking.failed')
+      : paused
+        ? state.pauseStartedAt
+          ? t('tracking.elapsed', {
+              time: elapsedPause(state.pauseStartedAt, now),
+            })
+          : t('tracking.pausedDetail')
+        : locked
+          ? t('tracking.lockedDetail')
+          : state?.currentApp
+            ? t('tracking.current', { app: state.currentApp })
+            : t('tracking.ready');
   return (
     <main className="flex h-screen flex-col gap-3 overflow-hidden border border-[var(--border)] bg-[var(--surface)] p-3.5 text-[12px] text-[var(--text)]">
-      <div className="app-drag flex items-center justify-between gap-2">
+      <div
+        className={`flex shrink-0 items-center justify-between gap-2 ${menuBar ? '' : 'app-drag'}`}
+      >
         <div className="flex items-center gap-2 text-[11px] font-bold">
           <span
             className={`size-2 rounded-full ${paused || locked ? 'bg-amber-500' : 'bg-emerald-500'}`}
           />
           Limit
         </div>
-        <GripHorizontal
-          size={15}
-          className="text-[var(--muted)]"
-          aria-hidden="true"
-        />
+        {!menuBar && (
+          <GripHorizontal
+            size={15}
+            className="text-[var(--muted)]"
+            aria-hidden="true"
+          />
+        )}
         <Button
           variant="icon"
           size="none"
@@ -106,8 +141,8 @@ export function TrackingWidget() {
           <X size={13} aria-hidden="true" />
         </Button>
       </div>
-      <div className="min-w-0 flex-1" role="status">
-        <p className="text-[14px] font-bold">
+      <div className="min-h-0 min-w-0 flex-1" role="status">
+        <p className="text-[14px] font-bold leading-5">
           {!state
             ? t(failed || !api ? 'tracking.loadFailed' : 'tracking.loading')
             : t(
@@ -118,23 +153,16 @@ export function TrackingWidget() {
                     : 'tracking.active',
               )}
         </p>
-        <p className="mt-1 truncate text-[10px] leading-4 text-[var(--muted)]">
-          {failed && state
-            ? t('tracking.failed')
-            : paused
-              ? state.pauseStartedAt
-                ? t('tracking.elapsed', {
-                    time: elapsedPause(state.pauseStartedAt, now),
-                  })
-                : t('tracking.pausedDetail')
-              : locked
-                ? t('tracking.lockedDetail')
-                : state?.currentApp
-                  ? t('tracking.current', { app: state.currentApp })
-                  : t('tracking.ready')}
-        </p>
+        {state && (
+          <p
+            className="mt-1 line-clamp-2 break-words text-[10px] leading-4 text-[var(--muted)]"
+            title={detail}
+          >
+            {detail}
+          </p>
+        )}
       </div>
-      <div className="no-drag flex items-center gap-2">
+      <div className="no-drag flex shrink-0 items-center gap-2">
         <Button
           size="sm"
           className="flex-1"

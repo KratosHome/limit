@@ -37,6 +37,7 @@ const {
 const { UsageStore, limitPeriodRange, localDay } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { createTrackingWidget } = require('./tracking-widget.cjs');
+const { createTrayIcon } = require('./tray-icon.cjs');
 const { ERROR_CODES, ok, fail } = require('./errors.cjs');
 const { desktopMessages, resolveDesktopLanguage } = require('./i18n.cjs');
 const {
@@ -53,6 +54,7 @@ const {
 
 let mainWindow = null;
 let tray = null;
+let trayMenu = null;
 let isQuitting = false;
 let store = null;
 let tracker = null;
@@ -141,6 +143,7 @@ function trackingWidgetState() {
   const settings = store.getSettings();
   const status = tracker.getStatus();
   return {
+    presentation: process.platform === 'darwin' ? 'menu-bar' : 'floating',
     trackingEnabled: settings.trackingEnabled,
     activityState: status.activityState,
     pauseStartedAt,
@@ -341,15 +344,20 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 function createTray() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><rect x="1" y="1" width="16" height="16" rx="5" fill="#111827"/><path d="M9 4.2v5.2l3.2 1.8" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="9" r="5.1" fill="none" stroke="white" stroke-width="1.2"/></svg>`;
-  const icon = nativeImage.createFromDataURL(
-    `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
-  );
-  if (process.platform === 'darwin') icon.setTemplateImage(true);
-  tray = new Tray(icon.resize({ width: 18, height: 18 }));
+  tray = new Tray(createTrayIcon(nativeImage, process.platform));
   tray.setToolTip(desktopMessages(store?.getSettings().language).trayTooltip);
   refreshTrayMenu();
-  tray.on('click', showMainWindow);
+  if (process.platform === 'darwin') {
+    tray.setIgnoreDoubleClickEvents(true);
+    tray.on('click', () => trackingWidget?.toggle());
+    tray.on('right-click', () => {
+      trackingWidget?.hide();
+      refreshTrayMenu();
+      if (trayMenu) tray.popUpContextMenu(trayMenu);
+    });
+  } else {
+    tray.on('click', showMainWindow);
+  }
 }
 
 function refreshTrayMenu() {
@@ -408,28 +416,29 @@ function refreshTrayMenu() {
   tray.setToolTip(
     updateState?.status === 'downloading' ? downloadLabel : t.trayTooltip,
   );
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: t.open, click: showMainWindow },
-      {
-        label: trackingEnabled ? t.pauseTracking : t.resumeTracking,
-        click: () => {
-          setTrackingEnabled(!trackingEnabled, true);
-        },
+  trayMenu = Menu.buildFromTemplate([
+    { label: t.open, click: showMainWindow },
+    {
+      label: trackingEnabled ? t.pauseTracking : t.resumeTracking,
+      click: () => {
+        setTrackingEnabled(!trackingEnabled, true);
       },
-      { type: 'separator' },
-      { label: t.appVersion(app.getVersion()), enabled: false },
-      ...updateMenu,
-      { type: 'separator' },
-      {
-        label: t.quit,
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
+    },
+    { type: 'separator' },
+    { label: t.appVersion(app.getVersion()), enabled: false },
+    ...updateMenu,
+    { type: 'separator' },
+    {
+      label: t.quit,
+      click: () => {
+        isQuitting = true;
+        app.quit();
       },
-    ]),
-  );
+    },
+  ]);
+  // On macOS an attached native menu consumes the primary click, which opens
+  // the tracking popover instead. Keep the menu for explicit right-clicks.
+  if (process.platform !== 'darwin') tray.setContextMenu(trayMenu);
 }
 
 function broadcastUpdate(payload = {}) {
@@ -1573,6 +1582,7 @@ if (hasSingleInstanceLock)
       ipcMain,
       screen,
       getState: trackingWidgetState,
+      getAnchorBounds: () => tray?.getBounds() ?? null,
       setTrackingEnabled,
       showMainWindow,
       rendererUrl:

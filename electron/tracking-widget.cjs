@@ -4,6 +4,7 @@ function createTrackingWidget({
   BrowserWindow,
   ipcMain,
   screen,
+  getAnchorBounds = () => null,
   getState,
   setTrackingEnabled,
   showMainWindow,
@@ -12,6 +13,11 @@ function createTrackingWidget({
 }) {
   let window = null;
   let disposed = false;
+  let ready = false;
+  let requestedVisible = false;
+  let blurTimer = null;
+  let lastAnchor = null;
+  const menuBar = platform === 'darwin';
   const channels = [
     'tracking-widget:get',
     'tracking-widget:set-enabled',
@@ -41,30 +47,118 @@ function createTrackingWidget({
     return getState();
   });
   handle(channels[2], () => {
+    if (menuBar) hide();
     showMainWindow();
     return true;
   });
   handle(channels[3], () => {
-    window.close();
+    if (menuBar) hide();
+    else window.close();
     return true;
   });
 
-  function show() {
-    if (disposed) return false;
-    if (window && !window.isDestroyed()) {
-      window.showInactive();
-      return true;
-    }
-    const { workArea } = screen.getDisplayNearestPoint(
-      screen.getCursorScreenPoint(),
+  function anchorBounds() {
+    const anchor = getAnchorBounds();
+    const valid =
+      anchor &&
+      ['x', 'y', 'width', 'height'].every((key) =>
+        Number.isFinite(anchor[key]),
+      ) &&
+      anchor.width > 0 &&
+      anchor.height > 0;
+    if (valid && isOnDisplay(anchor)) lastAnchor = { ...anchor };
+    // A macOS process/Space transition can briefly report a tray at (0,
+    // screenHeight). Keep the last real anchor instead of jumping to a corner.
+    return lastAnchor && isOnDisplay(lastAnchor) ? lastAnchor : null;
+  }
+
+  function isOnDisplay(rectangle) {
+    const displayBounds = screen.getDisplayMatching(rectangle).bounds;
+    return (
+      !displayBounds ||
+      (rectangle.x < displayBounds.x + displayBounds.width &&
+        rectangle.x + rectangle.width > displayBounds.x &&
+        rectangle.y < displayBounds.y + displayBounds.height &&
+        rectangle.y + rectangle.height > displayBounds.y)
     );
-    const width = 340;
-    const height = 180;
-    const widget = new BrowserWindow({
+  }
+
+  function bounds() {
+    const anchor = menuBar ? anchorBounds() : null;
+    const { workArea } = anchor
+      ? screen.getDisplayMatching(anchor)
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    if (!menuBar) {
+      return {
+        width: 340,
+        height: 180,
+        x: Math.max(workArea.x, workArea.x + workArea.width - 360),
+        y: Math.max(workArea.y, workArea.y + workArea.height - 200),
+      };
+    }
+    const width = Math.min(340, Math.max(1, workArea.width - 16));
+    const height = Math.min(180, Math.max(1, workArea.height - 14));
+    const x = anchor
+      ? anchor.x + anchor.width / 2 - width / 2
+      : workArea.x + workArea.width - width - 20;
+    const y = anchor ? anchor.y + anchor.height + 6 : workArea.y + 6;
+    return {
       width,
       height,
-      x: Math.max(workArea.x, workArea.x + workArea.width - width - 20),
-      y: Math.max(workArea.y, workArea.y + workArea.height - height - 20),
+      x: Math.round(
+        Math.max(
+          workArea.x + 8,
+          Math.min(x, workArea.x + workArea.width - width - 8),
+        ),
+      ),
+      y: Math.round(
+        Math.max(
+          workArea.y + 6,
+          Math.min(y, workArea.y + workArea.height - height - 8),
+        ),
+      ),
+    };
+  }
+
+  function clearBlurTimer() {
+    if (blurTimer) clearTimeout(blurTimer);
+    blurTimer = null;
+  }
+
+  function present() {
+    if (!ready || !requestedVisible || !window || window.isDestroyed()) return;
+    clearBlurTimer();
+    if (menuBar) {
+      window.setBounds(bounds(), false);
+      window.show();
+    } else window.showInactive();
+  }
+
+  function hide() {
+    requestedVisible = false;
+    clearBlurTimer();
+    if (disposed || !window || window.isDestroyed()) return false;
+    window.hide();
+    return true;
+  }
+
+  function toggle() {
+    if (requestedVisible) return hide();
+    return show();
+  }
+
+  function show() {
+    if (disposed) return false;
+    requestedVisible = true;
+    if (window && !window.isDestroyed()) {
+      refresh();
+      present();
+      return true;
+    }
+    ready = false;
+    const widget = new BrowserWindow({
+      ...bounds(),
+      ...(menuBar ? { type: 'panel', movable: false } : {}),
       frame: false,
       resizable: false,
       minimizable: false,
@@ -85,13 +179,46 @@ function createTrackingWidget({
       },
     });
     window = widget;
-    if (platform === 'darwin')
+    if (menuBar) {
       widget.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      widget.on('focus', clearBlurTimer);
+      widget.on('blur', () => {
+        if (window !== widget || widget.isDestroyed() || !requestedVisible)
+          return;
+        const anchor = anchorBounds();
+        const cursor = screen.getCursorScreenPoint();
+        const overTray =
+          anchor &&
+          cursor.x >= anchor.x &&
+          cursor.x <= anchor.x + anchor.width &&
+          cursor.y >= anchor.y &&
+          cursor.y <= anchor.y + anchor.height;
+        if (!overTray) {
+          hide();
+          return;
+        }
+        // macOS can blur the panel before delivering its tray click. Let that
+        // click toggle it closed instead of immediately reopening it.
+        clearBlurTimer();
+        blurTimer = setTimeout(() => {
+          blurTimer = null;
+          if (window === widget && !widget.isDestroyed() && !widget.isFocused())
+            hide();
+        }, 200);
+      });
+    }
     widget.once('ready-to-show', () => {
-      if (!disposed && !widget.isDestroyed()) widget.showInactive();
+      if (disposed || widget.isDestroyed() || window !== widget) return;
+      ready = true;
+      present();
     });
     widget.on('closed', () => {
-      if (window === widget) window = null;
+      if (window === widget) {
+        clearBlurTimer();
+        window = null;
+        ready = false;
+        requestedVisible = false;
+      }
     });
     widget.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     widget.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -114,12 +241,14 @@ function createTrackingWidget({
   function dispose() {
     if (disposed) return;
     disposed = true;
+    requestedVisible = false;
+    clearBlurTimer();
     for (const channel of channels) ipcMain.removeHandler(channel);
     if (window && !window.isDestroyed()) window.destroy();
     window = null;
   }
 
-  return { show, refresh, dispose };
+  return { show, hide, toggle, refresh, dispose };
 }
 
 module.exports = { createTrackingWidget };
