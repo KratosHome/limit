@@ -35,7 +35,7 @@ export default {
     inPeriod: 'Within the selected period',
     current: 'Current count · all dates',
     topTask: 'Most time in this period',
-    noTime: 'Start a task timer to see the time spent on your work.',
+    noTime: 'No task time was recorded in this period.',
     empty: 'Create your first task to plan your work and track its time.',
   },
   limits: {
