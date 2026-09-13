@@ -6,6 +6,7 @@ import {
   Pause,
   Play,
   Settings2,
+  ListTodo,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ViewKey } from '../types/navigation';
@@ -16,12 +17,14 @@ const navigation: Array<{
   labelKey:
     | 'navigation.overview'
     | 'navigation.activity'
+    | 'navigation.tasks'
     | 'navigation.limits'
     | 'navigation.settings';
   icon: typeof Gauge;
 }> = [
   { key: 'overview', labelKey: 'navigation.overview', icon: Gauge },
   { key: 'activity', labelKey: 'navigation.activity', icon: BarChart3 },
+  { key: 'tasks', labelKey: 'navigation.tasks', icon: ListTodo },
   { key: 'limits', labelKey: 'navigation.limits', icon: Clock3 },
   { key: 'settings', labelKey: 'navigation.settings', icon: Settings2 },
 ];

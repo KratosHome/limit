@@ -73,6 +73,7 @@ export function LimitApp() {
               app.setModal(limit ? { existing: limit } : {})
             }
             onOpenActivity={() => app.setView('activity')}
+            onOpenTasks={() => app.setView('tasks')}
             onActivityChanged={() =>
               app.loadDashboard(false, { throwOnError: true })
             }

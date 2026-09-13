@@ -41,6 +41,7 @@ const {
   localDay,
 } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
+const { createTaskController } = require('./task-controller.cjs');
 const { createTrackingWidget } = require('./tracking-widget.cjs');
 const { createTrayIcon } = require('./tray-icon.cjs');
 const { ERROR_CODES, ok, fail } = require('./errors.cjs');
@@ -63,6 +64,8 @@ let trayMenu = null;
 let isQuitting = false;
 let store = null;
 let tracker = null;
+let tasks = null;
+let lastTaskAppObservation = -Infinity;
 let trackingWidget = null;
 let pauseStartedAt = null;
 let accessibilityPermission = null;
@@ -1327,6 +1330,19 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
 }
 
 function registerIpc() {
+  for (const [channel, action] of Object.entries({
+    'tasks:workspace': (...args) => tasks.workspace(...args),
+    'tasks:save': (...args) => tasks.save(...args),
+    'tasks:status': (...args) => tasks.setStatus(...args),
+    'tasks:delete': (...args) => tasks.delete(...args),
+    'tasks:timer-start': (...args) => tasks.startTimer(...args),
+    'tasks:timer-pause': () => tasks.pauseTimer(),
+    'tasks:timer-stop': () => tasks.stopTimer(),
+    'tasks:sprint-save': (...args) => tasks.saveSprint(...args),
+    'tasks:sprint-delete': (...args) => tasks.deleteSprint(...args),
+    'tasks:repeat-disable': (...args) => tasks.disableRecurrence(...args),
+  }))
+    handleIpc(channel, (...args) => activityResult(() => action(...args)));
   ipcMain.on('limits:renderer-ready', (event) => {
     const trustedFrame =
       mainWindow &&
@@ -1342,6 +1358,7 @@ function registerIpc() {
     refreshNotificationPermissionSnapshot();
     return {
       ...store.getDashboard(from, to),
+      tasks: tasks?.workspace({ from, to }),
       tracker: tracker.getStatus(),
       platform: process.platform,
       isPackaged: app.isPackaged,
@@ -1528,159 +1545,203 @@ function registerIpc() {
   });
 }
 
-if (hasSingleInstanceLock)
-  app.whenReady().then(async () => {
-    if (shouldTestSystemNotification) {
-      let authorized = await ensureSystemNotificationAuthorization({
-        requestIfNeeded: true,
-      });
-      if (!authorized && (await promptForMacOSNotificationSettings())) {
-        authorized = await waitForMacOSNotificationAuthorization();
-      }
-      const delivered =
-        authorized &&
-        (await showSystemNotification({
-          title: 'Limit — перевірка сповіщень',
-          body: 'Системні сповіщення Limit працюють.',
-          context: 'signed development self-test',
-          id: `limit-system-notification-test-${notificationTestId || 'manual'}`,
-          onClick: () => undefined,
-        }));
-      console.log(
-        `[notifications] signed development self-test: authorization=${authorized ? 'authorized' : 'unavailable'}; notification=${delivered ? 'accepted' : 'failed'}`,
-      );
-      setTimeout(() => {
-        isQuitting = true;
-        app.exit(authorized && delivered ? 0 : 1);
-      }, 5000);
-      return;
-    }
-
-    configureSessionSecurity();
-    store = new UsageStore(
-      path.join(app.getPath('userData'), 'usage-data.sqlite3'),
-      {
-        defaultLanguage: resolveDesktopLanguage(
-          app.getPreferredSystemLanguages(),
-        ),
-        legacyJsonPath: path.join(app.getPath('userData'), 'usage-data.json'),
-      },
+function handleStartupFailure(error) {
+  console.error('Limit startup failed:', error);
+  const language =
+    store?.getSettings().language ??
+    resolveDesktopLanguage(app.getPreferredSystemLanguages());
+  const t = desktopMessages(language);
+  const detail = typeof error?.message === 'string' ? error.message : '';
+  process.exitCode = 1;
+  try {
+    dialog.showErrorBox(
+      t.startupFailed,
+      [detail, t.startupFailedDetail].filter(Boolean).join('\n\n'),
     );
-    accessibilityPermission = createAccessibilityPermissionController({
-      platform: process.platform,
-      isTrustedAccessibilityClient: (prompt) =>
-        systemPreferences.isTrustedAccessibilityClient(prompt),
-    });
-    tracker = new ActivityTracker({
-      store,
-      // Only a locked session stops tracking; the tracker counts idle as active.
-      getSystemState: () => powerMonitor.getSystemIdleState(1),
-      hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
-      ownProcessId: process.pid,
-      intervalMs: 2000,
-    });
-    trackingWidget = createTrackingWidget({
-      BrowserWindow,
-      ipcMain,
-      screen,
-      getState: trackingWidgetState,
-      getAnchorBounds: () => tray?.getBounds() ?? null,
-      setTrackingEnabled,
-      showMainWindow,
-      rendererUrl:
-        !app.isPackaged &&
-        process.env.ELECTRON_RENDERER_URL === 'http://127.0.0.1:5173'
-          ? process.env.ELECTRON_RENDERER_URL
-          : null,
-    });
-    registerIpc();
-    createWindow();
-    createTray();
-    const updatesEnabled =
-      app.isPackaged &&
-      limitAutoUpdate === true &&
-      !isSignedDevelopment &&
-      ['darwin', 'win32'].includes(process.platform);
-    const updateLogger = updatesEnabled
-      ? require('electron-log/main')
-      : console;
-    if (updatesEnabled) {
-      updateLogger.transports.file.resolvePathFn = () =>
-        path.join(app.getPath('userData'), 'logs', 'updates.log');
-      updateLogger.transports.file.maxSize = 1024 * 1024;
-    }
-    appUpdater = createAppUpdater({
-      app,
-      enabled: updatesEnabled,
-      manualInstall:
-        appUpdateInstallMode(process.platform, limitMacNativeUpdate) ===
-        'manual',
-      downloadInstaller: (info, options) =>
-        downloadMacUpdate(info, {
-          ...options,
-          directory: app.getPath('downloads'),
-          fetch: createElectronUpdateFetch(net),
-        }),
-      autoUpdater: updatesEnabled
-        ? require('electron-updater').autoUpdater
-        : null,
-      logger: updateLogger,
-      onStateChange: (state) => {
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.setProgressBar(
-            state.status === 'downloading'
-              ? Number.isFinite(state.percent)
-                ? state.percent / 100
-                : 2
-              : -1,
-          );
-        refreshTrayMenu();
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send('updates:state', getAppUpdateState());
-      },
-      prepareToQuit: () => {
-        isQuitting = true;
-        return () => {
-          isQuitting = false;
-        };
-      },
-    });
-    appUpdater.start();
-    refreshTrayMenu();
-    tracker.on('sample', checkLimit);
-    tracker.on('updated', () => {
-      trackingWidget?.refresh();
-      if (updateTimer) return;
-      updateTimer = setTimeout(() => {
-        updateTimer = null;
-        broadcastUpdate({ reason: 'sample' });
-      }, 3000);
-    });
-    tracker.start();
-    if (areLimitNotificationsEnabled()) {
-      setTimeout(() => {
-        void ensureSystemNotificationAuthorization({ requestIfNeeded: true });
-      }, 1000);
-    }
-    powerMonitor.on('suspend', () => {
-      suspended = true;
-      tracker.stop();
-    });
-    powerMonitor.on('lock-screen', () => {
-      screenLocked = true;
-      tracker.stop();
-    });
-    powerMonitor.on('resume', () => {
-      suspended = false;
-      if (!screenLocked) tracker.start();
-    });
-    powerMonitor.on('unlock-screen', () => {
-      screenLocked = false;
-      if (!suspended) tracker.start();
-    });
+  } finally {
+    app.quit();
+  }
+}
 
-    app.on('activate', showMainWindow);
-  });
+if (hasSingleInstanceLock)
+  app
+    .whenReady()
+    .then(async () => {
+      if (shouldTestSystemNotification) {
+        let authorized = await ensureSystemNotificationAuthorization({
+          requestIfNeeded: true,
+        });
+        if (!authorized && (await promptForMacOSNotificationSettings())) {
+          authorized = await waitForMacOSNotificationAuthorization();
+        }
+        const delivered =
+          authorized &&
+          (await showSystemNotification({
+            title: 'Limit — перевірка сповіщень',
+            body: 'Системні сповіщення Limit працюють.',
+            context: 'signed development self-test',
+            id: `limit-system-notification-test-${notificationTestId || 'manual'}`,
+            onClick: () => undefined,
+          }));
+        console.log(
+          `[notifications] signed development self-test: authorization=${authorized ? 'authorized' : 'unavailable'}; notification=${delivered ? 'accepted' : 'failed'}`,
+        );
+        setTimeout(() => {
+          isQuitting = true;
+          app.exit(authorized && delivered ? 0 : 1);
+        }, 5000);
+        return;
+      }
+
+      configureSessionSecurity();
+      store = new UsageStore(
+        path.join(app.getPath('userData'), 'usage-data.sqlite3'),
+        {
+          defaultLanguage: resolveDesktopLanguage(
+            app.getPreferredSystemLanguages(),
+          ),
+          legacyJsonPath: path.join(app.getPath('userData'), 'usage-data.json'),
+        },
+      );
+      accessibilityPermission = createAccessibilityPermissionController({
+        platform: process.platform,
+        isTrustedAccessibilityClient: (prompt) =>
+          systemPreferences.isTrustedAccessibilityClient(prompt),
+      });
+      tracker = new ActivityTracker({
+        store,
+        // Only a locked session stops tracking; the tracker counts idle as active.
+        getSystemState: () => powerMonitor.getSystemIdleState(1),
+        hasAccessibilityPermission: () => accessibilityPermission.isGranted(),
+        ownProcessId: process.pid,
+        intervalMs: 2000,
+      });
+      tasks = createTaskController({
+        store,
+        notify: () => broadcastUpdate({ reason: 'tasks' }),
+        getContext: () => {
+          const status = tracker.getStatus();
+          return {
+            trackingEnabled: store.getSettings().trackingEnabled,
+            locked:
+              screenLocked ||
+              suspended ||
+              powerMonitor.getSystemIdleState(1) === 'locked',
+            appId: status.currentApp?.id ?? null,
+            appReady:
+              status.running &&
+              status.activityState === 'active' &&
+              status.permissionState === 'granted' &&
+              performance.now() - lastTaskAppObservation < 6000,
+          };
+        },
+      });
+      tasks.start();
+      trackingWidget = createTrackingWidget({
+        BrowserWindow,
+        ipcMain,
+        screen,
+        getState: trackingWidgetState,
+        getAnchorBounds: () => tray?.getBounds() ?? null,
+        setTrackingEnabled,
+        showMainWindow,
+        rendererUrl:
+          !app.isPackaged &&
+          process.env.ELECTRON_RENDERER_URL === 'http://127.0.0.1:5173'
+            ? process.env.ELECTRON_RENDERER_URL
+            : null,
+      });
+      registerIpc();
+      createWindow();
+      createTray();
+      const updatesEnabled =
+        app.isPackaged &&
+        limitAutoUpdate === true &&
+        !isSignedDevelopment &&
+        ['darwin', 'win32'].includes(process.platform);
+      const updateLogger = updatesEnabled
+        ? require('electron-log/main')
+        : console;
+      if (updatesEnabled) {
+        updateLogger.transports.file.resolvePathFn = () =>
+          path.join(app.getPath('userData'), 'logs', 'updates.log');
+        updateLogger.transports.file.maxSize = 1024 * 1024;
+      }
+      appUpdater = createAppUpdater({
+        app,
+        enabled: updatesEnabled,
+        manualInstall:
+          appUpdateInstallMode(process.platform, limitMacNativeUpdate) ===
+          'manual',
+        downloadInstaller: (info, options) =>
+          downloadMacUpdate(info, {
+            ...options,
+            directory: app.getPath('downloads'),
+            fetch: createElectronUpdateFetch(net),
+          }),
+        autoUpdater: updatesEnabled
+          ? require('electron-updater').autoUpdater
+          : null,
+        logger: updateLogger,
+        onStateChange: (state) => {
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.setProgressBar(
+              state.status === 'downloading'
+                ? Number.isFinite(state.percent)
+                  ? state.percent / 100
+                  : 2
+                : -1,
+            );
+          refreshTrayMenu();
+          if (mainWindow && !mainWindow.isDestroyed())
+            mainWindow.webContents.send('updates:state', getAppUpdateState());
+        },
+        prepareToQuit: () => {
+          isQuitting = true;
+          return () => {
+            isQuitting = false;
+          };
+        },
+      });
+      appUpdater.start();
+      refreshTrayMenu();
+      tracker.on('sample', checkLimit);
+      tracker.on('updated', () => {
+        lastTaskAppObservation = performance.now();
+        tasks?.checkpoint();
+        trackingWidget?.refresh();
+        if (updateTimer) return;
+        updateTimer = setTimeout(() => {
+          updateTimer = null;
+          broadcastUpdate({ reason: 'sample' });
+        }, 3000);
+      });
+      tracker.start();
+      if (areLimitNotificationsEnabled()) {
+        setTimeout(() => {
+          void ensureSystemNotificationAuthorization({ requestIfNeeded: true });
+        }, 1000);
+      }
+      powerMonitor.on('suspend', () => {
+        suspended = true;
+        tracker.stop();
+      });
+      powerMonitor.on('lock-screen', () => {
+        screenLocked = true;
+        tracker.stop();
+      });
+      powerMonitor.on('resume', () => {
+        suspended = false;
+        if (!screenLocked) tracker.start();
+      });
+      powerMonitor.on('unlock-screen', () => {
+        screenLocked = false;
+        if (!suspended) tracker.start();
+      });
+
+      app.on('activate', showMainWindow);
+    })
+    .catch(handleStartupFailure);
 
 if (hasSingleInstanceLock) {
   app.on('second-instance', () => {
@@ -1690,6 +1751,7 @@ if (hasSingleInstanceLock) {
 
 app.on('before-quit', (event) => {
   isQuitting = true;
+  tasks?.dispose();
   trackingWidget?.dispose();
   const downloadCleanup = appUpdater?.dispose();
   tracker?.stop();
@@ -1706,6 +1768,13 @@ app.on('before-quit', (event) => {
   }
   store?.close();
 });
+
+if (hasSingleInstanceLock && isSignedDevelopment) {
+  // A dev rebuild must flush timers and close SQLite before replacing the app.
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => app.quit());
+  }
+}
 
 app.on('window-all-closed', () => {
   // Limit працює у фоні через tray, доки користувач явно не натисне «Вийти».

@@ -1,5 +1,6 @@
 export default {
   navigation: {
+    tasks: 'Задачі',
     label: 'Основна навігація',
     overview: 'Огляд',
     activity: 'Активність',

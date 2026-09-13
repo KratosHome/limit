@@ -1,4 +1,6 @@
 export default {
+  invalidTask: 'Перевірте дані задачі та спробуйте ще раз.',
+  invalidSprint: 'Перевірте назву й дати спринту (до 366 днів).',
   dashboardLoad: 'Не вдалося завантажити статистику',
   selectApp: 'Оберіть застосунок',
   invalidDuration:

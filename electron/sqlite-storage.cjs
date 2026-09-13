@@ -2,6 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { AppError, ERROR_CODES } = require('./errors.cjs');
+const fitnessSchema = require('./store/fitness-schema.cjs');
+const {
+  healthSyncSchema,
+  createHealthSyncSchema,
+} = require('./store/health-sync-schema.cjs');
+const tasksSchema = require('./store/tasks-schema.cjs');
+const { assertFeatureSchema } = require('./store/schema-compatibility.cjs');
 const {
   createLimitId,
   limitMaximumMinutes,
@@ -125,6 +132,7 @@ class SQLiteStorage {
       ) STRICT;
     `);
 
+    let legacyTaskSchema = false;
     const migrations = [
       {
         version: 1,
@@ -312,18 +320,77 @@ class SQLiteStorage {
           ALTER TABLE limits_v8 RENAME TO limits;
         `,
       },
+      {
+        version: 9,
+        name: 'fitness_daily',
+        up: fitnessSchema,
+      },
+      {
+        version: 10,
+        name: 'health_sync',
+        up: (database) => {
+          // An unreleased task build reused version 9. Preserve its record and
+          // tasks, and add the missing fitness tables within this transaction.
+          if (legacyTaskSchema) database.exec(fitnessSchema);
+          createHealthSyncSchema(database);
+        },
+      },
+      {
+        version: 11,
+        name: 'task_manager',
+        up: (database) => {
+          // Only the explicitly recognized and validated task-9 branch already
+          // owns these tables. All other histories create them here.
+          if (!legacyTaskSchema) database.exec(tasksSchema);
+        },
+      },
     ];
     const latestVersion = migrations.at(-1).version;
-    const currentVersion =
-      this.database
-        .prepare(
-          'SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations',
-        )
-        .get().version || 0;
+    const history = this.database
+      .prepare('SELECT version, name FROM schema_migrations ORDER BY version')
+      .all();
+    const currentVersion = history.at(-1)?.version || 0;
     if (currentVersion > latestVersion) {
       throw new UnsupportedDatabaseVersionError(
         `База створена новішою версією Limit (schema ${currentVersion})`,
       );
+    }
+
+    legacyTaskSchema = history.some(
+      ({ version, name }) => version === 9 && name === 'task_manager',
+    );
+    for (let index = 0; index < history.length; index += 1) {
+      const { version, name } = history[index];
+      const knownTaskBranch = version === 9 && legacyTaskSchema;
+      if (
+        version !== index + 1 ||
+        (!knownTaskBranch && name !== migrations[index]?.name)
+      ) {
+        throw new UnsupportedDatabaseVersionError(
+          `Невідома історія SQLite migrations (schema ${version})`,
+        );
+      }
+    }
+    try {
+      assertFeatureSchema(
+        this.database,
+        fitnessSchema,
+        currentVersion >= 10 || (currentVersion >= 9 && !legacyTaskSchema),
+      );
+      assertFeatureSchema(
+        this.database,
+        healthSyncSchema,
+        currentVersion >= 10,
+      );
+      assertFeatureSchema(
+        this.database,
+        tasksSchema,
+        legacyTaskSchema || currentVersion >= 11,
+      );
+    } catch (error) {
+      throw new UnsupportedDatabaseVersionError(error.message, {
+        cause: error,
+      });
     }
 
     if (currentVersion > 0 && currentVersion < latestVersion)

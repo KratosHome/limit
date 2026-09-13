@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityChart } from '../components/activity-chart';
 import { AppIcon } from '../components/app-icon';
 import { SiteUsagePanel } from '../components/site-usage-panel';
+import { TaskOverview } from '../components/tasks/task-overview';
 import { Button } from '../components/ui/button';
 import {
   formatChange,
@@ -25,6 +26,7 @@ import type { AppUsage, DashboardData } from '../types/usage';
 interface OverviewProps {
   data: DashboardData;
   onOpenActivity: () => void;
+  onOpenTasks: () => void;
   onActivityChanged: () => Promise<void>;
   onOpenLimits: () => void;
   onOpenSettings: () => void;
@@ -166,6 +168,7 @@ function TopAppRow({
 export function Overview({
   data,
   onOpenActivity,
+  onOpenTasks,
   onActivityChanged,
   onOpenLimits,
   onOpenSettings,
@@ -240,6 +243,10 @@ export function Overview({
           tone="rose"
         />
       </div>
+
+      {data.tasks && (
+        <TaskOverview workspace={data.tasks} onOpenTasks={onOpenTasks} />
+      )}
 
       <div className="mt-4 grid grid-cols-[minmax(0,1.58fr)_minmax(300px,.82fr)] items-start gap-4">
         <section className="card p-5">

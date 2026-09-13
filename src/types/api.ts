@@ -10,8 +10,27 @@ import type {
   SiteUsageDelete,
 } from './usage';
 import type { AppUpdateState } from './updates';
+import type {
+  TaskInput,
+  TaskItem,
+  TaskStatus,
+  TaskWorkspace,
+  TaskTimerState,
+  SprintInput,
+  TaskSprint,
+} from './tasks';
 
 export interface LimitApi {
+  getTaskWorkspace(range: DateRange): Promise<TaskWorkspace>;
+  saveTask(input: TaskInput): Promise<TaskItem>;
+  setTaskStatus(id: string, status: TaskStatus): Promise<TaskItem>;
+  deleteTask(id: string): Promise<boolean>;
+  startTaskTimer(id: string): Promise<TaskTimerState>;
+  pauseTaskTimer(): Promise<TaskTimerState>;
+  stopTaskTimer(): Promise<TaskTimerState>;
+  saveTaskSprint(input: SprintInput): Promise<TaskSprint>;
+  deleteTaskSprint(id: string): Promise<boolean>;
+  disableTaskRecurrence(id: string): Promise<boolean>;
   getDashboard(range: DateRange): Promise<DashboardData>;
   getStatus(): Promise<TrackerStatus>;
   getActivityDays(appId: string, range: DateRange): Promise<ActivityDay[]>;

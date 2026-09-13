@@ -1,5 +1,8 @@
 const messages = {
   uk: {
+    startupFailed: 'Не вдалося запустити Limit',
+    startupFailedDetail:
+      'Запустіть актуальну збірку Limit. Якщо помилка повториться, передайте її текст розробнику.',
     trayTooltip: 'Limit — трекер часу',
     open: 'Відкрити Limit',
     pauseTracking: 'Призупинити трекінг',
@@ -54,6 +57,9 @@ const messages = {
     later: 'Пізніше',
   },
   en: {
+    startupFailed: 'Could not start Limit',
+    startupFailedDetail:
+      'Start the latest build of Limit. If this happens again, share this error with the developer.',
     trayTooltip: 'Limit — time tracker',
     open: 'Open Limit',
     pauseTracking: 'Pause tracking',

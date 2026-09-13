@@ -17,7 +17,9 @@ function createStore(t) {
 }
 
 function rebuildLegacyLimitsTable(database, { siteTargets = true } = {}) {
-  database.exec('ALTER TABLE limits RENAME TO limits_current');
+  database.exec(
+    'DROP TABLE task_time_daily; DROP TABLE tasks; DROP TABLE task_recurrences; DROP TABLE task_sprints; DROP TABLE fitness_daily; DROP TABLE fitness_preferences; DROP TABLE health_sync_config; DROP TABLE fitness_sync_deleted; ALTER TABLE limits RENAME TO limits_current',
+  );
   if (siteTargets) {
     database.exec(`
       CREATE TABLE limits (
@@ -270,7 +272,7 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
   assert.equal(reopenedStore.getTodayLimitUsage(siteLimit, date), 125);
   assert.equal(
     reopenedStore.database.prepare('PRAGMA user_version').get().user_version,
-    8,
+    11,
   );
   assert.deepEqual(
     reopenedStore.database
@@ -286,6 +288,9 @@ test('SQLite persists settings, usage, sites, and limits across restarts', (t) =
       { version: 6, name: 'notification_preference' },
       { version: 7, name: 'canonical_site_limit_ids' },
       { version: 8, name: 'limit_periods' },
+      { version: 9, name: 'fitness_daily' },
+      { version: 10, name: 'health_sync' },
+      { version: 11, name: 'task_manager' },
     ],
   );
   assert.equal(
@@ -474,7 +479,7 @@ test('migration v8 preserves v7 limits as daily limits', (t) => {
   });
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    8,
+    11,
   );
   assert.equal(
     migratedStore.database.prepare('PRAGMA integrity_check').get()
@@ -532,7 +537,7 @@ test('migration adds site targets while preserving existing app limits', (t) => 
   });
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    8,
+    11,
   );
 });
 
@@ -584,7 +589,7 @@ test('migration retries notifications marked by the previous delivery path', (t)
   );
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    8,
+    11,
   );
 });
 
@@ -612,7 +617,7 @@ test('migration enables the notification preference for existing users', (t) => 
   assert.equal(migratedStore.getSettings().notificationsEnabled, true);
   assert.equal(
     migratedStore.database.prepare('PRAGMA user_version').get().user_version,
-    8,
+    11,
   );
 });
 

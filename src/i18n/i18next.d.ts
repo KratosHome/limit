@@ -6,6 +6,10 @@ import type limits from './locales/en/limits';
 import type modals from './locales/en/modals';
 import type overview from './locales/en/overview';
 import type settings from './locales/en/settings';
+import type tasks from './locales/en/tasks';
+import type tasksPlanning from './locales/en/tasks-planning';
+import type tasksStats from './locales/en/tasks-stats';
+import type tasksDay from './locales/en/tasks-day';
 
 type CommonResources = Omit<typeof common, 'categories'> & {
   categories: typeof common.categories & Record<string, string>;
@@ -18,6 +22,10 @@ declare module 'i18next' {
   interface CustomTypeOptions {
     defaultNS: 'common';
     resources: {
+      tasks: typeof tasks;
+      tasksPlanning: typeof tasksPlanning;
+      tasksStats: typeof tasksStats;
+      tasksDay: typeof tasksDay;
       activity: typeof activity;
       common: CommonResources;
       components: typeof components;

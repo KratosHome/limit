@@ -2,6 +2,8 @@ import { Activity } from '../pages/activity';
 import { Limits } from '../pages/limits';
 import { Overview } from '../pages/overview';
 import { Settings } from '../pages/settings';
+import { TaskManager } from '../pages/tasks';
+import { limitApi } from '../api';
 import type { AppLimit } from '../types/limits';
 import type { ViewKey } from '../types/navigation';
 import type {
@@ -19,6 +21,7 @@ interface AppRouterProps {
   updates: AppUpdates;
   onEditLimit: (limit?: AppLimit) => void;
   onOpenActivity: () => void;
+  onOpenTasks: () => void;
   onActivityChanged: () => Promise<void>;
   onOpenLimits: () => void;
   onOpenPermissions: (kind?: PermissionKind) => Promise<boolean>;
@@ -37,6 +40,7 @@ export function AppRouter({
   updates,
   onEditLimit,
   onOpenActivity,
+  onOpenTasks,
   onActivityChanged,
   onOpenLimits,
   onOpenPermissions,
@@ -47,6 +51,18 @@ export function AppRouter({
   onSettingsChange,
   onThemeChange,
 }: AppRouterProps) {
+  if (view === 'tasks' && data.tasks)
+    return (
+      <TaskManager
+        workspace={data.tasks}
+        knownApps={data.knownApps}
+        onChanged={onActivityChanged}
+        onRangeChange={async (range) => {
+          await limitApi.getTaskWorkspace(range);
+          await onActivityChanged();
+        }}
+      />
+    );
   if (view === 'activity')
     return (
       <Activity
@@ -83,6 +99,7 @@ export function AppRouter({
       data={data}
       onActivityChanged={onActivityChanged}
       onOpenActivity={onOpenActivity}
+      onOpenTasks={onOpenTasks}
       onOpenLimits={onOpenLimits}
       onOpenSettings={onOpenSettings}
       onEditLimit={onEditLimit}

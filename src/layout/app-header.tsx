@@ -39,7 +39,8 @@ export function AppHeader({
   onOpenTrackingWidget,
 }: AppHeaderProps) {
   const { t } = useTranslation('components');
-  const hasPeriodPicker = view === 'overview' || view === 'activity';
+  const hasPeriodPicker =
+    view === 'overview' || view === 'activity' || view === 'tasks';
 
   return (
     <header className="app-drag flex h-[68px] shrink-0 items-center justify-end gap-3 border-b border-[var(--border)] bg-[var(--background)] px-7">

@@ -49,6 +49,7 @@ const {
   getCurrentLimitUsage,
   getKnownApps,
 } = require('./store/usage-queries.cjs');
+const tasks = require('./store/tasks.cjs');
 
 class UsageStore {
   constructor(databasePath, options = {}) {
@@ -88,6 +89,34 @@ class UsageStore {
 
   getStorageStatus() {
     return this.storage.getStatus();
+  }
+
+  getTaskWorkspace(range, now = new Date()) {
+    return tasks.getTaskWorkspace(this, range, now);
+  }
+  getTask(id) {
+    return tasks.getTask(this, id);
+  }
+  saveTask(input, now = new Date()) {
+    return tasks.saveTask(this, input, now);
+  }
+  setTaskStatus(id, status, now = new Date()) {
+    return tasks.setTaskStatus(this, id, status, now);
+  }
+  deleteTask(id, now = new Date()) {
+    return tasks.deleteTask(this, id, now);
+  }
+  saveTaskSprint(input) {
+    return tasks.saveTaskSprint(this, input);
+  }
+  deleteTaskSprint(id) {
+    return tasks.deleteTaskSprint(this, id);
+  }
+  disableTaskRecurrence(id, now = new Date()) {
+    return tasks.disableTaskRecurrence(this, id, now);
+  }
+  addTaskTime(input) {
+    return tasks.addTaskTime(this, input);
   }
 
   updateSettings(patch) {

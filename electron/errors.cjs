@@ -1,4 +1,6 @@
 const ERROR_CODES = Object.freeze({
+  INVALID_TASK: 'invalidTask',
+  INVALID_SPRINT: 'invalidSprint',
   DASHBOARD_LOAD: 'dashboardLoad',
   DESKTOP_API_UNAVAILABLE: 'desktopApiUnavailable',
   INVALID_APP_DATA: 'invalidAppData',

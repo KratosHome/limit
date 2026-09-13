@@ -8,6 +8,16 @@ function missingElectronApi(): Promise<never> {
 }
 
 const unavailableElectronApi: LimitApi = {
+  getTaskWorkspace: missingElectronApi,
+  saveTask: missingElectronApi,
+  setTaskStatus: missingElectronApi,
+  deleteTask: missingElectronApi,
+  startTaskTimer: missingElectronApi,
+  pauseTaskTimer: missingElectronApi,
+  stopTaskTimer: missingElectronApi,
+  saveTaskSprint: missingElectronApi,
+  deleteTaskSprint: missingElectronApi,
+  disableTaskRecurrence: missingElectronApi,
   getDashboard: missingElectronApi,
   getStatus: missingElectronApi,
   getActivityDays: missingElectronApi,

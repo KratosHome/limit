@@ -129,7 +129,7 @@ test('the rebuild guard blocks the development process and permits production to
   assert.throws(
     () =>
       runScript('assert-signed-macos-dev-not-running.cjs', root, {
-        processList: `${processList}200 ${development.executable} --arg\n`,
+        processList: `${processList}200 ${development.executable}\n`,
       }),
     /Завершіть Limit Development/,
   );
@@ -137,7 +137,13 @@ test('the rebuild guard blocks the development process and permits production to
 
 function mainHarness(
   t,
-  { metadata = {}, env = {}, platform = 'darwin', isPackaged = true } = {},
+  {
+    metadata = {},
+    env = {},
+    platform = 'darwin',
+    isPackaged = true,
+    startupError = null,
+  } = {},
 ) {
   const root = temporaryProject(t);
   const resourcesPath = path.join(root, 'Contents', 'Resources');
@@ -156,6 +162,10 @@ function mainHarness(
     notificationCenterSetting: 'enabled',
     soundSetting: 'enabled',
   };
+  const processEvents = new EventEmitter();
+  const appEvents = new EventEmitter();
+  const dialogs = [];
+  let quitCount = 0;
   const electron = {
     app: {
       isPackaged,
@@ -163,27 +173,86 @@ function mainHarness(
       setPath: (name, value) => paths.set(name, value),
       requestSingleInstanceLock: () => true,
       setAppUserModelId() {},
-      whenReady: () => new Promise(() => {}),
-      on() {},
+      getPreferredSystemLanguages: () => ['uk-UA'],
+      whenReady: () =>
+        startupError ? Promise.reject(startupError) : new Promise(() => {}),
+      on: appEvents.on.bind(appEvents),
+      quit: () => {
+        quitCount += 1;
+        appEvents.emit('before-quit', { preventDefault() {} });
+      },
+    },
+    dialog: {
+      showErrorBox: (title, detail) => dialogs.push({ title, detail }),
     },
   };
   const source = fs.readFileSync(path.join(__dirname, '../main.cjs'), 'utf8');
   const api = vm.runInNewContext(
-    `${source}\n;({ getMacOSNotificationSettings })`,
+    `${source}\n;({ getMacOSNotificationSettings, setShutdownResources(value) {
+      tasks = value.tasks;
+      tracker = value.tracker;
+      store = value.store;
+    } })`,
     {
       require(name) {
         if (name === 'electron') return electron;
         if (name === '../package.json') return metadata;
+        if (name === './i18n.cjs') return require('../i18n.cjs');
         if (name === fs.realpathSync(helperPath))
           return { getNotificationSettings: async () => settings };
         return name.startsWith('node:') ? require(name) : {};
       },
-      process: { platform, env, resourcesPath },
+      process: {
+        platform,
+        env,
+        resourcesPath,
+        on: processEvents.on.bind(processEvents),
+      },
       __dirname: path.resolve(__dirname, '..'),
     },
   );
-  return { paths, root, settings, api };
+  return {
+    paths,
+    root,
+    settings,
+    api,
+    processEvents,
+    dialogs,
+    quitCount: () => quitCount,
+  };
 }
+
+test('startup failures show the reason and quit instead of leaving a hidden process', async (t) => {
+  const h = mainHarness(t, {
+    startupError: new Error('База створена новішою версією Limit (schema 99)'),
+  });
+  await new Promise(setImmediate);
+  assert.equal(h.dialogs.length, 1);
+  assert.equal(h.dialogs[0].title, 'Не вдалося запустити Limit');
+  assert.match(h.dialogs[0].detail, /schema 99/);
+  assert.equal(h.quitCount(), 1);
+});
+
+test('dev termination flushes task and activity timers before closing storage', (t) => {
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    const h = mainHarness(t, { metadata: developmentConfig.extraMetadata });
+    const cleanup = [];
+    h.api.setShutdownResources({
+      tasks: { dispose: () => cleanup.push('task checkpoint') },
+      tracker: { stop: () => cleanup.push('activity checkpoint') },
+      store: { close: () => cleanup.push('close database') },
+    });
+    assert.equal(h.processEvents.emit(signal), true);
+    assert.deepEqual(cleanup, [
+      'task checkpoint',
+      'activity checkpoint',
+      'close database',
+    ]);
+  }
+  const production = mainHarness(t);
+  assert.equal(production.processEvents.listenerCount('SIGINT'), 0);
+  assert.equal(production.processEvents.listenerCount('SIGTERM'), 0);
+});
 
 test('opening the packaged development app directly preserves separate data storage', (t) => {
   for (const [options, directory] of [

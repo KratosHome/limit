@@ -1,4 +1,6 @@
 export default {
+  invalidTask: 'Check the task details and try again.',
+  invalidSprint: 'Check the sprint name and dates (up to 366 days).',
   dashboardLoad: 'Could not load statistics',
   selectApp: 'Choose an app',
   invalidDuration: 'Enter a total from 1 minute to {{max}} for this period',

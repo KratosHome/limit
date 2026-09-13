@@ -15,6 +15,8 @@
   --color-border: var(--border);
   --color-input: var(--border);
   --color-ring: var(--accent);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: #fff;
 }
 
 /* Keep the compact shadcn controls independent of the native form reset. */
@@ -47,6 +49,7 @@
   --border-strong: #d4d9e3;
   --accent: #5968df;
   --accent-strong: #4f5bc7;
+  --destructive: #cb3651;
   --nav-active: #eceeff;
   --chart: #d9ddf8;
   --progress-track: #eceef3;
@@ -56,6 +59,7 @@
 
 :root.dark {
   color-scheme: dark;
+  --destructive: #fb7185;
   --background: #10141e;
   --sidebar: #121722;
   --surface: #171d29;

@@ -7,6 +7,16 @@ async function activityRequest(channel, ...args) {
 }
 
 contextBridge.exposeInMainWorld('limitApi', {
+  getTaskWorkspace: (range) => activityRequest('tasks:workspace', range),
+  saveTask: (input) => activityRequest('tasks:save', input),
+  setTaskStatus: (id, status) => activityRequest('tasks:status', id, status),
+  deleteTask: (id) => activityRequest('tasks:delete', id),
+  startTaskTimer: (id) => activityRequest('tasks:timer-start', id),
+  pauseTaskTimer: () => activityRequest('tasks:timer-pause'),
+  stopTaskTimer: () => activityRequest('tasks:timer-stop'),
+  saveTaskSprint: (input) => activityRequest('tasks:sprint-save', input),
+  deleteTaskSprint: (id) => activityRequest('tasks:sprint-delete', id),
+  disableTaskRecurrence: (id) => activityRequest('tasks:repeat-disable', id),
   getDashboard: (range) => ipcRenderer.invoke('dashboard:get', range),
   getStatus: () => ipcRenderer.invoke('tracker:status'),
   getActivityDays: (appId, range) =>

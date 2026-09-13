@@ -2,6 +2,7 @@ import type { AppLimit, LimitPeriod } from './limits';
 import type { DateRange } from './navigation';
 import type { NotificationPermission, Settings } from './settings';
 import type { TrackerStatus } from './tracker';
+import type { TaskWorkspace } from './tasks';
 
 export interface SiteUsage {
   domain: string;
@@ -68,6 +69,7 @@ export interface TimelinePoint {
 }
 
 export interface DashboardData {
+  tasks?: TaskWorkspace;
   apps: AppUsage[];
   totalSeconds: number;
   previousTotalSeconds: number;

@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "node scripts/start-development.cjs",
     "dev:ui": "concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
-    "dev:mac:signed": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs",
+    "dev:mac:signed": "node scripts/stop-signed-macos-dev.cjs && npm run package:mac:local && node scripts/start-signed-macos-dev.cjs",
     "test:notification:mac": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs --notification-test",
     "build": "tsc --noEmit && vite build",
     "build:mac": "npm run installers:mac",

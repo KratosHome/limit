@@ -4,16 +4,14 @@ const path = require('node:path');
 const projectRoot = path.resolve(__dirname, '..');
 const scriptName = process.platform === 'darwin' ? 'dev:mac:signed' : 'dev:ui';
 const npmCliPath = process.env.npm_execpath;
-const usesWindowsNpmCli =
-  process.platform === 'win32' &&
-  typeof npmCliPath === 'string' &&
-  path.isAbsolute(npmCliPath);
-const executable = usesWindowsNpmCli
+const usesNpmCli =
+  typeof npmCliPath === 'string' && path.isAbsolute(npmCliPath);
+const executable = usesNpmCli
   ? process.execPath
   : process.platform === 'win32'
     ? process.env.ComSpec || 'cmd.exe'
     : 'npm';
-const arguments_ = usesWindowsNpmCli
+const arguments_ = usesNpmCli
   ? [npmCliPath, 'run', scriptName]
   : process.platform === 'win32'
     ? ['/d', '/s', '/c', `npm run ${scriptName}`]

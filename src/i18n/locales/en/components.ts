@@ -3,6 +3,7 @@ export default {
     label: 'Main navigation',
     overview: 'Overview',
     activity: 'Activity',
+    tasks: 'Tasks',
     limits: 'Limits',
     settings: 'Settings',
   },

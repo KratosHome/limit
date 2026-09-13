@@ -1,5 +1,13 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import tasksEn from './locales/en/tasks';
+import tasksUk from './locales/uk/tasks';
+import tasksPlanningEn from './locales/en/tasks-planning';
+import tasksPlanningUk from './locales/uk/tasks-planning';
+import tasksStatsEn from './locales/en/tasks-stats';
+import tasksStatsUk from './locales/uk/tasks-stats';
+import tasksDayEn from './locales/en/tasks-day';
+import tasksDayUk from './locales/uk/tasks-day';
 import activityEn from './locales/en/activity';
 import commonEn from './locales/en/common';
 import componentsEn from './locales/en/components';
@@ -26,6 +34,10 @@ export function normalizeLanguage(value?: string | null): AppLanguage {
 
 const resources = {
   uk: {
+    tasks: tasksUk,
+    tasksPlanning: tasksPlanningUk,
+    tasksStats: tasksStatsUk,
+    tasksDay: tasksDayUk,
     activity: activityUk,
     common: commonUk,
     components: componentsUk,
@@ -36,6 +48,10 @@ const resources = {
     settings: settingsUk,
   },
   en: {
+    tasks: tasksEn,
+    tasksPlanning: tasksPlanningEn,
+    tasksStats: tasksStatsEn,
+    tasksDay: tasksDayEn,
     activity: activityEn,
     common: commonEn,
     components: componentsEn,

@@ -1,0 +1,27 @@
+export default {
+  period: 'Selected period',
+  tracked: 'Task time',
+  completed: 'Completed tasks',
+  inPeriod: 'Within this period',
+  open: 'Open tasks',
+  overdue: 'Overdue tasks',
+  current: 'Current count · all dates',
+  timeChart: 'Time spent',
+  completedChart: 'Tasks completed',
+  daily: 'Daily totals',
+  weekly: 'Weekly totals',
+  monthly: 'Monthly totals',
+  minutes: 'Minutes',
+  hours: 'Hours',
+  tasks: 'Tasks',
+  topTasks: 'Most tracked tasks',
+  topApps: 'Time by application',
+  manual: 'Without an app restriction',
+  appHint:
+    'Application time belongs to tasks with linked apps. Unrestricted timers are shown separately.',
+  noTime:
+    'No task time in this period. Start a task timer to see your activity here.',
+  noCompleted: 'No tasks were completed in this period.',
+  noTasks: 'No tracked tasks in this period.',
+  noApps: 'No application breakdown in this period.',
+} as const;
