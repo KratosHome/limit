@@ -10,11 +10,11 @@
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/start-development.cjs",
+    "dev": "node --env-file-if-exists=.env.local scripts/start-development.cjs",
     "dev:ui": "concurrently -k \"vite --host 127.0.0.1 --strictPort\" \"wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
     "dev:mac:signed": "node scripts/stop-signed-macos-dev.cjs && npm run package:mac:local && node scripts/start-signed-macos-dev.cjs",
     "test:notification:mac": "npm run package:mac:local && node scripts/start-signed-macos-dev.cjs --notification-test",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node --env-file-if-exists=.env.public scripts/write-support-config.cjs",
     "build:mac": "npm run installers:mac",
     "build:win": "npm run installers:win",
     "build:all": "npm run build:mac && npm run build:win",
@@ -40,7 +40,9 @@
     "installers:win": "npm run build && electron-builder --config scripts/electron-builder.installers.cjs --win --x64 --publish never && node scripts/collect-installers.cjs --local --win",
     "installers:mac": "npm run build && electron-builder --config scripts/electron-builder.installers.cjs --mac --universal --publish never && node scripts/collect-installers.cjs --local --mac",
     "installers:collect": "node scripts/collect-installers.cjs --local",
-    "prepare": "husky"
+    "prepare": "husky",
+    "feedback:dev": "node --env-file=services/feedback/.env services/feedback/server.cjs",
+    "dev:feedback": "concurrently -k \"npm run feedback:dev\" \"wait-on tcp:127.0.0.1:8787 && cross-env LIMIT_FEEDBACK_DEV_URL=http://127.0.0.1:8787/feedback npm run dev\""
   },
   "lint-staged": {
     "*.{js,cjs,mjs,jsx,ts,tsx}": [

@@ -1,5 +1,6 @@
 export default {
   navigation: {
+    health: 'Health',
     label: 'Main navigation',
     overview: 'Overview',
     activity: 'Activity',

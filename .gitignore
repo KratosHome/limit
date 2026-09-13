@@ -5,6 +5,12 @@ release/
 .DS_Store
 *.log
 .vite/
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 graphify-out/
 installers/*
 !installers/README.md

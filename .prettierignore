@@ -4,3 +4,7 @@ release/
 node_modules/
 package-lock.json
 graphify-out/
+.env
+.env.*
+**/.env
+**/.env.*

@@ -15,6 +15,7 @@ function mainHarness({ platform = 'darwin', metadata = {} } = {}) {
     app: {
       isPackaged: true,
       getPath: () => '/tmp',
+      getAppPath: () => '/nonexistent-limit-test',
       setPath: () => {},
       setAppUserModelId: () => {},
       requestSingleInstanceLock: () => true,
@@ -39,6 +40,9 @@ function mainHarness({ platform = 'darwin', metadata = {} } = {}) {
     require: (name) => {
       if (name === 'electron') return electron;
       if (name === './app-updater.cjs') return updaterModule;
+      if (name === './support.cjs') return require('../support.cjs');
+      if (name === './support-config.cjs')
+        return require('../support-config.cjs');
       if (name === '../package.json') return metadata;
       if (name.startsWith('node:')) return require(name);
       return {};

@@ -42,6 +42,8 @@ const {
 } = require('./store.cjs');
 const { ActivityTracker } = require('./tracker.cjs');
 const { createTaskController } = require('./task-controller.cjs');
+const { createSupport } = require('./support.cjs');
+const { readSupportConfig } = require('./support-config.cjs');
 const { createTrackingWidget } = require('./tracking-widget.cjs');
 const { createTrayIcon } = require('./tray-icon.cjs');
 const { ERROR_CODES, ok, fail } = require('./errors.cjs');
@@ -1330,6 +1332,25 @@ async function loadAppIcon(normalizedId, source, fingerprint) {
 }
 
 function registerIpc() {
+  const support = createSupport({
+    config: readSupportConfig(app.getAppPath(), {
+      development: !app.isPackaged || isSignedDevelopment,
+    }),
+    development: !app.isPackaged || isSignedDevelopment,
+    openExternal: (url) => shell.openExternal(url),
+  });
+  for (const [channel, action] of Object.entries({
+    'support:config': () => support.getConfig(),
+    'support:feedback': (input) => support.sendFeedback(input),
+    'support:open-link': (kind) => support.openLink(kind),
+  }))
+    handleIpc(channel, async (...args) => {
+      try {
+        return ok(await action(...args));
+      } catch (error) {
+        return fail(error);
+      }
+    });
   for (const [channel, action] of Object.entries({
     'tasks:workspace': (...args) => tasks.workspace(...args),
     'tasks:save': (...args) => tasks.save(...args),

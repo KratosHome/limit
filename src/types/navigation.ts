@@ -1,4 +1,5 @@
-export type ViewKey = 'overview' | 'activity' | 'tasks' | 'limits' | 'settings';
+export type ViewKey =
+  'overview' | 'activity' | 'tasks' | 'health' | 'limits' | 'settings';
 
 export type PeriodKey = 'today' | 'yesterday' | '7days' | '30days' | 'custom';
 

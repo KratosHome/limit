@@ -3,6 +3,7 @@ import { Limits } from '../pages/limits';
 import { Overview } from '../pages/overview';
 import { Settings } from '../pages/settings';
 import { TaskManager } from '../pages/tasks';
+import { Health } from '../pages/health';
 import { limitApi } from '../api';
 import type { AppLimit } from '../types/limits';
 import type { ViewKey } from '../types/navigation';
@@ -51,6 +52,7 @@ export function AppRouter({
   onSettingsChange,
   onThemeChange,
 }: AppRouterProps) {
+  if (view === 'health') return <Health />;
   if (view === 'tasks' && data.tasks)
     return (
       <TaskManager

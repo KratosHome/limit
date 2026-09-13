@@ -1,5 +1,6 @@
 export default {
   navigation: {
+    health: 'Здоров’я',
     tasks: 'Задачі',
     label: 'Основна навігація',
     overview: 'Огляд',

@@ -7,6 +7,7 @@ import {
   Play,
   Settings2,
   ListTodo,
+  HeartPulse,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ViewKey } from '../types/navigation';
@@ -18,6 +19,7 @@ const navigation: Array<{
     | 'navigation.overview'
     | 'navigation.activity'
     | 'navigation.tasks'
+    | 'navigation.health'
     | 'navigation.limits'
     | 'navigation.settings';
   icon: typeof Gauge;
@@ -25,6 +27,7 @@ const navigation: Array<{
   { key: 'overview', labelKey: 'navigation.overview', icon: Gauge },
   { key: 'activity', labelKey: 'navigation.activity', icon: BarChart3 },
   { key: 'tasks', labelKey: 'navigation.tasks', icon: ListTodo },
+  { key: 'health', labelKey: 'navigation.health', icon: HeartPulse },
   { key: 'limits', labelKey: 'navigation.limits', icon: Clock3 },
   { key: 'settings', labelKey: 'navigation.settings', icon: Settings2 },
 ];

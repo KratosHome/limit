@@ -39,6 +39,7 @@ function mainHarness(controller) {
     app: {
       isPackaged: true,
       getPath: () => '/tmp',
+      getAppPath: () => '/nonexistent-limit-test',
       setPath() {},
       requestSingleInstanceLock: () => true,
       on() {},
@@ -53,6 +54,9 @@ function mainHarness(controller) {
     require(name) {
       if (name === 'electron') return electron;
       if (name === './errors.cjs') return errors;
+      if (name === './support.cjs') return require('../support.cjs');
+      if (name === './support-config.cjs')
+        return require('../support-config.cjs');
       if (name === './store.cjs') return require('../store.cjs');
       if (name.startsWith('node:')) return require(name);
       return {};

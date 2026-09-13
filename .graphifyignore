@@ -8,3 +8,7 @@ graphify-out/
 .idea/
 package-lock.json
 skills-lock.json
+.env
+.env.*
+**/.env
+**/.env.*

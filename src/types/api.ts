@@ -10,6 +10,7 @@ import type {
   SiteUsageDelete,
 } from './usage';
 import type { AppUpdateState } from './updates';
+import type { FeedbackInput, SupportConfig, SupportLink } from './support';
 import type {
   TaskInput,
   TaskItem,
@@ -21,6 +22,9 @@ import type {
 } from './tasks';
 
 export interface LimitApi {
+  getSupportConfig(): Promise<SupportConfig>;
+  sendFeedback(input: FeedbackInput): Promise<boolean>;
+  openSupportLink(kind: SupportLink): Promise<boolean>;
   getTaskWorkspace(range: DateRange): Promise<TaskWorkspace>;
   saveTask(input: TaskInput): Promise<TaskItem>;
   setTaskStatus(id: string, status: TaskStatus): Promise<TaskItem>;

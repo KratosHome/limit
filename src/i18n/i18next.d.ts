@@ -10,6 +10,8 @@ import type tasks from './locales/en/tasks';
 import type tasksPlanning from './locales/en/tasks-planning';
 import type tasksStats from './locales/en/tasks-stats';
 import type tasksDay from './locales/en/tasks-day';
+import type health from './locales/en/health';
+import type support from './locales/en/support';
 
 type CommonResources = Omit<typeof common, 'categories'> & {
   categories: typeof common.categories & Record<string, string>;
@@ -22,6 +24,8 @@ declare module 'i18next' {
   interface CustomTypeOptions {
     defaultNS: 'common';
     resources: {
+      health: typeof health;
+      support: typeof support;
       tasks: typeof tasks;
       tasksPlanning: typeof tasksPlanning;
       tasksStats: typeof tasksStats;

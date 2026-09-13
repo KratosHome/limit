@@ -5,6 +5,9 @@ const commonFiles = [
   '!electron/**/*.test.cjs',
   '!electron/native/**/*',
   'package.json',
+  '!**/.env',
+  '!**/.env.*',
+  '!services/**/*',
 ];
 
 module.exports = {

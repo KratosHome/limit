@@ -1,4 +1,8 @@
 const ERROR_CODES = Object.freeze({
+  FEEDBACK_INVALID: 'feedbackInvalid',
+  FEEDBACK_RATE_LIMITED: 'feedbackRateLimited',
+  FEEDBACK_UNAVAILABLE: 'feedbackUnavailable',
+  SUPPORT_LINK_UNAVAILABLE: 'supportLinkUnavailable',
   INVALID_TASK: 'invalidTask',
   INVALID_SPRINT: 'invalidSprint',
   DASHBOARD_LOAD: 'dashboardLoad',

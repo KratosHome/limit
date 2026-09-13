@@ -23,6 +23,7 @@ import { LanguageSelect } from '../components/language-select';
 import type { AppLanguage } from '../i18n';
 import type { AppUpdates } from '../hooks/use-app-updates';
 import { AppUpdateSettings } from '../components/app-update-settings';
+import { SupportSection } from '../components/support-section';
 
 interface SettingsProps {
   data: DashboardData;
@@ -625,6 +626,9 @@ export function Settings({
             </p>
           </section>
         </div>
+      </div>
+      <div className="mt-6">
+        <SupportSection source="settings" />
       </div>
     </div>
   );

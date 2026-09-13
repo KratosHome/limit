@@ -8,6 +8,10 @@ import tasksStatsEn from './locales/en/tasks-stats';
 import tasksStatsUk from './locales/uk/tasks-stats';
 import tasksDayEn from './locales/en/tasks-day';
 import tasksDayUk from './locales/uk/tasks-day';
+import healthEn from './locales/en/health';
+import healthUk from './locales/uk/health';
+import supportEn from './locales/en/support';
+import supportUk from './locales/uk/support';
 import activityEn from './locales/en/activity';
 import commonEn from './locales/en/common';
 import componentsEn from './locales/en/components';
@@ -34,6 +38,8 @@ export function normalizeLanguage(value?: string | null): AppLanguage {
 
 const resources = {
   uk: {
+    health: healthUk,
+    support: supportUk,
     tasks: tasksUk,
     tasksPlanning: tasksPlanningUk,
     tasksStats: tasksStatsUk,
@@ -48,6 +54,8 @@ const resources = {
     settings: settingsUk,
   },
   en: {
+    health: healthEn,
+    support: supportEn,
     tasks: tasksEn,
     tasksPlanning: tasksPlanningEn,
     tasksStats: tasksStatsEn,

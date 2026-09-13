@@ -8,6 +8,9 @@ function missingElectronApi(): Promise<never> {
 }
 
 const unavailableElectronApi: LimitApi = {
+  getSupportConfig: missingElectronApi,
+  sendFeedback: missingElectronApi,
+  openSupportLink: missingElectronApi,
   getTaskWorkspace: missingElectronApi,
   saveTask: missingElectronApi,
   setTaskStatus: missingElectronApi,

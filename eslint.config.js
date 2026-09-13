@@ -84,7 +84,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['electron/**/*.cjs', 'scripts/**/*.cjs'],
+    files: ['electron/**/*.cjs', 'scripts/**/*.cjs', 'services/**/*.cjs'],
     languageOptions: {
       globals: globals.node,
       sourceType: 'commonjs',

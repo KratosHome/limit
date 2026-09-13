@@ -7,6 +7,9 @@ async function activityRequest(channel, ...args) {
 }
 
 contextBridge.exposeInMainWorld('limitApi', {
+  getSupportConfig: () => activityRequest('support:config'),
+  sendFeedback: (input) => activityRequest('support:feedback', input),
+  openSupportLink: (kind) => activityRequest('support:open-link', kind),
   getTaskWorkspace: (range) => activityRequest('tasks:workspace', range),
   saveTask: (input) => activityRequest('tasks:save', input),
   setTaskStatus: (id, status) => activityRequest('tasks:status', id, status),

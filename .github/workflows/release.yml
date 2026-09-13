@@ -42,6 +42,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       HUSKY: '0'
+      LIMIT_FEEDBACK_URL: ${{ vars.LIMIT_FEEDBACK_URL }}
+      LIMIT_DONATION_URL: ${{ vars.LIMIT_DONATION_URL }}
     steps:
       - uses: actions/checkout@v7
         with:
